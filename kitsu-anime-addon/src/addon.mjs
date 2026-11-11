@@ -4,18 +4,19 @@ import { ApiError, CATALOGS, createKitsuService } from './kitsu.mjs';
 
 export const manifest = {
   id: 'personal.kitsu.anime.shelf',
-  version: '1.1.0',
+  version: '1.1.1',
   name: 'Kitsu Anime Shelf',
+  logo: 'https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/logo.png',
   description: 'Anime discovery from Kitsu.app with 40 main category catalogs, plus popular, top rated, currently airing, films, and search.',
-  types: ['anime', 'series'],
+  types: ['series'],
   resources: [
-    { name: 'catalog', types: ['anime'] },
+    { name: 'catalog', types: ['series'] },
     { name: 'meta', types: ['series'], idPrefixes: ['kitsu:'] }
   ],
   idPrefixes: ['kitsu:'],
   catalogs: Object.entries(CATALOGS).map(([id, definition]) => ({
     id,
-    type: 'anime',
+    type: 'series',
     name: definition.name,
     extra: [
       ...(definition.searchOnly ? [{ name: 'search', isRequired: true }] : []),
@@ -30,7 +31,8 @@ const assets = new Map([
   ['/configure', ['index.html', 'text/html; charset=utf-8']],
   ['/app.css', ['app.css', 'text/css; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
-  ['/logo.svg', ['logo.svg', 'image/svg+xml']]
+  ['/logo.svg', ['logo.svg', 'image/svg+xml']],
+  ['/logo.png', ['logo.png', 'image/png']]
 ]);
 
 function json(response, status, value, cache = 0) {
@@ -82,7 +84,7 @@ export function createAddonServer({ service = createKitsuService(), logger = con
       }
       if (url.pathname === '/health') { json(response, 200, { status: 'ok', name: manifest.name }); return; }
       if (url.pathname === '/manifest.json') { json(response, 200, manifest, 300); return; }
-      const catalog = /^\/catalog\/anime\/([^/]+?)(?:\/([^/]+))?\.json$/.exec(url.pathname);
+      const catalog = /^\/catalog\/(?:series|anime)\/([^/]+?)(?:\/([^/]+))?\.json$/.exec(url.pathname);
       if (catalog) {
         const result = await service.catalog(decodeURIComponent(catalog[1]), parseExtra(catalog[2], url));
         json(response, 200, result, 900);
