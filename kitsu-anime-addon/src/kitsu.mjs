@@ -1,11 +1,13 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { CATEGORIES } from './categories.mjs';
 import { createGroupedCatalog, groupedMetadata } from './season-groups.mjs';
+import { createCatalogCache } from './catalog-cache.mjs';
 
 const API_BASE = 'https://kitsu.app/api/edge/';
 const API_PAGE_SIZE = 20;
 const CATALOG_PAGE_SIZE = 100;
 const MAX_EPISODES = 20000;
+const CATALOG_FIELDS = 'canonicalTitle,titles,subtype,posterImage,coverImage,synopsis,description,startDate,endDate,status,episodeLength,slug,youtubeVideoId';
 
 export class ApiError extends Error {
   constructor(message, status = 502) {
@@ -28,13 +30,16 @@ export const CATALOGS = Object.freeze({
 function limiter(maximum) {
   let active = 0;
   const queue = [];
-  return async function run(task) {
-    if (active >= maximum) await new Promise(resolve => queue.push(resolve));
+  return async function run(task, priority = 0) {
+    if (active >= maximum) await new Promise(resolve => {
+      queue.push({ resolve, priority });
+      queue.sort((a, b) => b.priority - a.priority);
+    });
     else active += 1;
     try { return await task(); }
     finally {
       const next = queue.shift();
-      if (next) next();
+      if (next) next.resolve();
       else active -= 1;
     }
   };
@@ -45,7 +50,7 @@ export function createApiClient({ fetchImpl = fetch, now = Date.now, timeoutMs =
   const pending = new Map();
   const run = limiter(3);
 
-  async function request(path, params = {}, ttl = 900) {
+  async function request(path, params = {}, ttl = 900, { priority = path === 'anime' ? 0 : 2 } = {}) {
     const url = new URL(path, API_BASE);
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined && value !== '') url.searchParams.set(key, String(value));
@@ -86,7 +91,7 @@ export function createApiClient({ fetchImpl = fetch, now = Date.now, timeoutMs =
         if (error instanceof ApiError) throw error;
         throw new ApiError('Cannot reach Kitsu.app. Check your connection and try again.');
       }
-    });
+    }, priority);
     pending.set(key, operation);
     try { return await operation; }
     finally { pending.delete(key); }
@@ -153,6 +158,7 @@ export function createKitsuService(api = createApiClient(), { artwork, seasonGro
     return artwork ? artwork.decorate(meta) : meta;
   }
   const groupedCatalog = seasonGroups ? createGroupedCatalog({ api, preview, now }) : undefined;
+  const catalogCache = createCatalogCache({ now });
 
   async function catalog(id, extra = {}) {
     const definition = CATALOGS[id];
@@ -162,36 +168,50 @@ export function createKitsuService(api = createApiClient(), { artwork, seasonGro
     const query = typeof extra.search === 'string' ? extra.search.trim() : '';
     if (query.length > 200) throw new ApiError('Search must be 200 characters or fewer.', 400);
     if (definition.searchOnly && !query) return { metas: [] };
-    const params = { 'page[size]': API_PAGE_SIZE, include: 'categories' };
+    // Catalog filtering is performed by Kitsu. Fetch full genres only when a
+    // title is opened, rather than expanding categories for thousands of cards.
+    const params = { 'page[size]': API_PAGE_SIZE, 'fields[anime]': CATALOG_FIELDS };
     if (query) params['filter[text]'] = query;
     else if (definition.sort) params.sort = definition.sort;
     if (definition.status) params['filter[status]'] = definition.status;
     if (definition.subtype) params['filter[subtype]'] = definition.subtype;
     if (definition.category) params['filter[categories]'] = definition.category;
+    const genre = definition.category ? ({ Children: 'Kids', Superpower: 'Super Power' }[definition.name] || definition.name) : undefined;
 
-    if (groupedCatalog && !definition.subtype) {
-      const index = await seasonGroups.index();
-      if (index?.byMember.size) return groupedCatalog(id, params, skip, index);
+    async function load({ background = false } = {}) {
+      if (groupedCatalog && !definition.subtype) {
+        const index = await seasonGroups.index();
+        if (index?.byMember.size) return groupedCatalog(id, params, skip, index, genre, { background });
+      }
+
+      // Kitsu's Typesense search currently repeats the first page for offset=20.
+      // Its number/size paginator works for both filtered and unfiltered anime.
+      const firstPage = Math.floor(skip / API_PAGE_SIZE) + 1;
+      const firstIndex = skip % API_PAGE_SIZE;
+      const first = await api.request('anime', { ...params, 'page[number]': firstPage }, 900, { priority: background ? -2 : 0 });
+      if (!Array.isArray(first.data)) throw new ApiError('Kitsu did not return an anime list.');
+      const pages = [first];
+      if (first.data.length === API_PAGE_SIZE && first.links?.next) {
+        const count = Number(first.meta?.count);
+        const numbers = Array.from({ length: Math.ceil((CATALOG_PAGE_SIZE + firstIndex) / API_PAGE_SIZE) - 1 }, (_, i) => firstPage + i + 1)
+          .filter(number => !Number.isFinite(count) || (number - 1) * API_PAGE_SIZE < count);
+        pages.push(...await Promise.all(numbers.map(number => api.request('anime', { ...params, 'page[number]': number }, 900, { priority: background ? -2 : 1 }))));
+      }
+      const seen = new Set();
+      const metas = pages.flatMap(page => page.data.map(item => preview(item, page.included)))
+        .filter(meta => !seen.has(meta.id) && seen.add(meta.id))
+        .slice(firstIndex, firstIndex + CATALOG_PAGE_SIZE);
+      return { metas: genre ? metas.map(meta => ({ ...meta, genres: [...new Set([...(meta.genres || []), genre])] })) : metas };
     }
 
-    // Kitsu's Typesense search currently repeats the first page for offset=20.
-    // Its number/size paginator works for both filtered and unfiltered anime.
-    const firstPage = Math.floor(skip / API_PAGE_SIZE) + 1;
-    const firstIndex = skip % API_PAGE_SIZE;
-    const first = await api.request('anime', { ...params, 'page[number]': firstPage });
-    if (!Array.isArray(first.data)) throw new ApiError('Kitsu did not return an anime list.');
-    const pages = [first];
-    if (first.data.length === API_PAGE_SIZE && first.links?.next) {
-      const count = Number(first.meta?.count);
-      const numbers = Array.from({ length: Math.ceil((CATALOG_PAGE_SIZE + firstIndex) / API_PAGE_SIZE) - 1 }, (_, i) => firstPage + i + 1)
-        .filter(number => !Number.isFinite(count) || (number - 1) * API_PAGE_SIZE < count);
-      pages.push(...await Promise.all(numbers.map(number => api.request('anime', { ...params, 'page[number]': number }))));
-    }
-    const seen = new Set();
-    const metas = pages.flatMap(page => page.data.map(item => preview(item, page.included)))
-      .filter(meta => !seen.has(meta.id) && seen.add(meta.id))
-      .slice(firstIndex, firstIndex + CATALOG_PAGE_SIZE);
-    return { metas };
+    // Search and later pages retain their live cursor behavior. Only fixed
+    // first pages use stale-while-revalidate caching.
+    if (query || skip !== 0) return load();
+    const result = await catalogCache.read(id, load);
+    // An isolated background refresh must not change the pagination order for
+    // the cached first page just delivered to a client.
+    groupedCatalog?.seed(id, params, result.metas);
+    return result;
   }
 
   async function singleMetadata(id, { enrichArtwork = true } = {}) {

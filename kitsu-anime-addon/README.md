@@ -54,6 +54,14 @@ Version 1.3.0 groups TV anime when the mapping source supplies an explicit, unam
 - Grouping and artwork share one daily mapping download. A recent mapping index can be reused for up to seven days during a source outage; without one, original individual entries remain usable. Known episode counts supply numbered episodes during episode-detail outages. If an entire required season cannot be fetched, grouped details return a retryable error rather than quietly omitting that season.
 - Grouping is on by default. For rollback set `GROUP_ANIME_SEASONS=false` and restart/redeploy; leave the existing TMDB settings unchanged.
 
+## Category loading speed
+
+Version 1.3.1 keeps a complete first-page cache for the 44 fixed browse catalogs. Pages are fresh for 15 minutes; after that, the previous complete page can be served for up to 24 hours while it refreshes in the background. Only one catalog refresh runs at a time, and failed refreshes wait a minute before retrying. The cache holds at most 64 pages and resets when the process restarts. A first uncached visit still depends on Kitsu's response time.
+
+Catalog requests select only the title/artwork fields needed by cards. They no longer expand the category relationships for every title. Category filtering still happens at Kitsu; filtered cards retain the selected genre label, while complete genre lists are fetched on the details page. All 100 catalog slots and season grouping remain intact. Detail/episode requests and catalog-completion work take priority over queued first-row and background work, with the same maximum of three concurrent Kitsu requests.
+
+Search and later pages retain live cursor behavior. Background refreshes use isolated cursors; pagination is seeded from the first page actually returned, preventing a ranking refresh from replacing that page's order mid-browse. Existing metadata, poster caching and episode IDs are unchanged.
+
 ## Run elsewhere
 
 For Render, follow **[DEPLOY-RENDER.md](DEPLOY-RENDER.md)**. An optional `render.yaml` Blueprint is included with the Free plan and required host configuration.

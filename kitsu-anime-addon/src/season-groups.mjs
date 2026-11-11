@@ -62,6 +62,7 @@ export function createSeasonGroups({ loadMappings = createAnimeMappingLoader() }
 export function createGroupedCatalog({ api, preview, now = Date.now }) {
   const cursors = new Map();
   const previews = new Map();
+  const seeds = new Map();
 
   function remember(item, included) {
     const meta = preview(item, included);
@@ -76,16 +77,19 @@ export function createGroupedCatalog({ api, preview, now = Date.now }) {
     return entry && now() - entry.saved < 900000 ? entry.meta : undefined;
   }
 
-  return async function catalog(id, params, skip, index) {
+  const catalog = async function (id, params, skip, index, genre, { background = false } = {}) {
     const key = JSON.stringify([id, params]);
-    let state = cursors.get(key);
+    let state = background ? undefined : cursors.get(key);
     if (!state || now() - state.saved >= 900000) {
-      state = { ids: [], seen: new Set(), genres: new Map(), nextPage: 1, ended: false,
+      const seed = background ? [] : seeds.get(key) || [];
+      state = { ids: [...seed], seen: new Set(seed), genres: new Map(), nextPage: 1, ended: false,
         totalPages: Infinity, index, saved: now(), pending: Promise.resolve() };
     }
-    cursors.delete(key);
-    cursors.set(key, state);
-    while (cursors.size > 16) cursors.delete(cursors.keys().next().value);
+    if (!background) {
+      cursors.delete(key);
+      cursors.set(key, state);
+      while (cursors.size > 16) cursors.delete(cursors.keys().next().value);
+    }
     const operation = state.pending.then(async () => {
       if (skip > state.ids.length + 500 || skip + RESULT_SIZE > 10000) {
         throw Object.assign(new Error('This catalog position has expired. Reopen the catalog and browse from the start.'), { status: 400 });
@@ -97,7 +101,8 @@ export function createGroupedCatalog({ api, preview, now = Date.now }) {
           state.totalPages - state.nextPage + 1);
         if (count < 1) { state.ended = true; break; }
         const numbers = Array.from({ length: count }, (_, index) => state.nextPage + index);
-        const batch = await Promise.all(numbers.map(number => api.request('anime', { ...params, 'page[number]': number })));
+        const batch = await Promise.all(numbers.map(number => api.request('anime', { ...params, 'page[number]': number }, 900,
+          { priority: background ? -2 : state.nextPage === 1 ? 0 : 1 })));
         for (const page of batch) {
           if (!Array.isArray(page.data)) throw new Error('Kitsu did not return an anime list.');
           const total = Number(page.meta?.count);
@@ -120,14 +125,15 @@ export function createGroupedCatalog({ api, preview, now = Date.now }) {
       const missing = ids.filter(id => !cached(id));
       const batches = Array.from({ length: Math.ceil(missing.length / PAGE_SIZE) }, (_, index) => missing.slice(index * PAGE_SIZE, (index + 1) * PAGE_SIZE));
       await Promise.all(batches.map(async ids => {
-        const result = await api.request('anime', { 'filter[id]': ids.join(','), 'page[limit]': PAGE_SIZE, include: 'categories' });
+        const result = await api.request('anime', { 'filter[id]': ids.join(','), 'page[limit]': PAGE_SIZE,
+          ...(params['fields[anime]'] ? { 'fields[anime]': params['fields[anime]'] } : {}) }, 900, { priority: background ? -2 : 2 });
         for (const item of result.data || []) remember(item, result.included);
       }));
       const metas = ids.map(id => {
         const meta = cached(id);
         if (!meta) throw Object.assign(new Error('Some grouped anime details are temporarily unavailable. Please try again.'), { status: 502 });
         const group = state.index.byRoot.get(id);
-        const genres = [...new Set([...(meta.genres || []), ...(state.genres.get(id) || [])])];
+        const genres = [...new Set([...(meta.genres || []), ...(state.genres.get(id) || []), ...(genre ? [genre] : [])])];
         return { ...meta, ...(genres.length ? { genres } : {}),
           ...(group ? { description: `${meta.description || ''}${meta.description ? '\n\n' : ''}Seasons 1–${group.members.length}.` } : {}) };
       });
@@ -136,6 +142,17 @@ export function createGroupedCatalog({ api, preview, now = Date.now }) {
     state.pending = operation.catch(() => {});
     return operation;
   };
+
+  catalog.seed = (id, params, metas) => {
+    const key = JSON.stringify([id, params]);
+    const ids = metas.map(meta => meta.id.replace(/^kitsu:/, ''));
+    const state = cursors.get(key);
+    if (state && ids.some((id, index) => state.ids[index] !== id)) cursors.delete(key);
+    seeds.delete(key);
+    seeds.set(key, ids);
+    while (seeds.size > 64) seeds.delete(seeds.keys().next().value);
+  };
+  return catalog;
 }
 
 export async function groupedMetadata(group, metadata) {
