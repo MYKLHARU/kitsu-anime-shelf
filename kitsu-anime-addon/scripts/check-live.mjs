@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { CATEGORIES } from '../src/categories.mjs';
 import { createApiClient, createKitsuService } from '../src/kitsu.mjs';
+import { createSeasonGroups } from '../src/season-groups.mjs';
 
 const api = createApiClient();
-const service = createKitsuService(api);
+const service = createKitsuService(api, { seasonGroups: createSeasonGroups() });
 
 function validPage(metas, id) {
   // Live rankings can move or repeat an item between upstream requests. The

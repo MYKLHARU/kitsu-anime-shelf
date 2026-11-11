@@ -39,8 +39,20 @@ The add-on serves catalogs and metadata. Playback comes from a separate stream a
 - Anime IDs: `kitsu:1`
 - Episode IDs: `kitsu:1:1`
 - Metadata type: `series`, including single-episode anime films.
-- Kitsu entries use absolute episode numbering. Sequels and seasons can be separate Kitsu entries.
+- Kitsu entries use local/absolute episode numbers within each Kitsu entry. Reliably mapped TV seasons are now presented under one main show; see below.
 - Known episodes include Kitsu titles, summaries, dates and thumbnails when available. Missing details fall back to numbered entries. Unknown-count shows use only actual episode numbers from Kitsu.
+
+## Grouped TV seasons
+
+Version 1.3.0 groups TV anime when the mapping source supplies an explicit, unambiguous TMDB show ID and consecutive season numbers starting at 1. For example, My Hero Academia opens as one catalog entry (`kitsu:11469`) with seasons 1–8 and 170 episodes in the current Kitsu data. Season 2 episode 1 still uses `kitsu:12268:1`; only its displayed season changes. Stream addons continue receiving the original Kitsu video IDs.
+
+- Films, OVAs, specials, music videos and separately mapped spin-offs remain separate. Similar names and collection membership are never used as evidence for grouping.
+- Missing season numbers, multiple Kitsu entries for the same season, cross-show ID conflicts and split-cour episode offsets leave the affected show ungrouped. This deliberately limits coverage to straightforward mappings; some well-known shows will still have separate entries.
+- The first-season Kitsu ID, name and artwork become the main catalog card. Selecting a later season in search leads to that same card. Details collect episodes, release years and genres across the mapped seasons; title-logo lookup runs only for the main card.
+- Existing saved individual-season cards retain their original metadata and numbering. Open the main show from a freshly loaded Kitsu catalog/search to see the grouped version, then add that card to your library if desired. No saved library records are changed automatically.
+- Catalog pagination counts unique shows and fetches more upstream pages to fill a page after merging duplicates. Sixteen query cursors last 15 minutes and are limited to 10,000 show positions. Deep uncached jumps over 500 positions ask the client to reopen the catalog instead of scanning thousands of upstream pages. Main-show cards missing from the raw result are loaded in batches of 20.
+- Grouping and artwork share one daily mapping download. A recent mapping index can be reused for up to seven days during a source outage; without one, original individual entries remain usable. Known episode counts supply numbered episodes during episode-detail outages. If an entire required season cannot be fetched, grouped details return a retryable error rather than quietly omitting that season.
+- Grouping is on by default. For rollback set `GROUP_ANIME_SEASONS=false` and restart/redeploy; leave the existing TMDB settings unchanged.
 
 ## Run elsewhere
 
@@ -71,9 +83,11 @@ TMDB is [free for non-commercial use with attribution](https://developer.themovi
 npm test
 npm run test:live
 npm run test:artwork -- https://YOUR-ADDON-HOST
+npm run test:seasons
+npm run test:seasons -- https://YOUR-ADDON-HOST
 ```
 
-The automated tests simulate provider responses and render actual image fixtures to check matching, artwork fallback, cache behavior, image limits, Stremio endpoints, 100-item catalog pagination and episode IDs. GitHub Actions runs these on Node.js 22/Linux. The Kitsu live check queries real categories, search and episodes. The artwork live check requires a running instance with TMDB credentials configured and checks real logos, posters, episodes and cache validation for a TV anime and a film.
+The automated tests check conservative season grouping, playback IDs, old individual-season links, unique-show pagination, provider failures, artwork rendering and HTTP behavior. GitHub Actions runs these on Node.js 22/Linux. The Kitsu live check queries real categories with grouping enabled, search and episodes. The season check validates My Hero Academia's eight seasons, separate films/spin-offs, existing individual-season compatibility and two full grouped catalog pages. Without an argument it queries providers directly; with a service URL it checks the running addon. The artwork live check requires TMDB credentials on the running instance.
 
 The server implements the [Stremio add-on HTTP protocol](https://stremio.github.io/stremio-addon-sdk/protocol.html), including CORS. Kitsu requests use the public [JSON:API](https://github.com/hummingbird-me/api-docs), 20-item upstream pages, a maximum of three concurrent requests, timeouts, caching and request deduplication. Catalogs are cached for 15 minutes; metadata for one hour. Previously fetched data can be reused for up to 24 hours during a temporary upstream outage.
 
