@@ -1,0 +1,29 @@
+name: Addon tests
+on:
+  pull_request:
+    paths:
+      - 'kitsu-anime-addon/**'
+      - '.github/workflows/test.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'kitsu-anime-addon/**'
+      - '.github/workflows/test.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: kitsu-anime-addon
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: kitsu-anime-addon/package-lock.json
+      - run: npm ci
+      - run: npm test

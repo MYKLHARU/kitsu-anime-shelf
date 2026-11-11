@@ -17,7 +17,7 @@
       <h1 id="heading">Your next anime.<br><em>On your shelf.</em></h1>
       <p class="intro">Forty anime categories. Forty main catalogs. Bring Action, Isekai, Romance, and the rest of your shelf straight into Stremio.</p>
       <div class="actions"><a id="install" class="button primary" href="#">Install in Stremio <span aria-hidden="true">↗</span></a><button id="copy" class="button secondary" type="button">Copy manifest URL</button></div>
-      <p id="copy-status" class="copy-status" role="status" aria-live="polite">No account or API key needed.</p>
+      <p id="copy-status" class="copy-status" role="status" aria-live="polite">Browse anime freely. Title artwork is shown when available.</p>
       <details class="install-help"><summary>Installing manually or on another device?</summary><p>In Stremio, open Add-ons, paste the manifest URL below into the add-on URL field, and install.</p><p id="hosting-note">This local address works on this computer while the add-on is running. A phone or TV needs an accessible HTTPS deployment.</p><input id="manifest-url" aria-label="Manifest URL" readonly><p>This add-on provides catalogs and episode metadata. Playback uses a separate stream add-on that supports Kitsu IDs.</p></details>
     </section>
     <section class="browse" aria-labelledby="browse-heading">
@@ -32,6 +32,11 @@
       <div id="cards" class="cards" aria-busy="true"></div>
     </section>
     <footer><p>Made for your anime discoveries.</p><p>Catalog data and artwork: <a href="https://kitsu.app" target="_blank" rel="noopener noreferrer">Kitsu.app</a> · Independent, unofficial add-on</p></footer>
+    <section class="credits" aria-label="Artwork credits">
+      <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer"><img src="/tmdb.svg" alt="The Movie Database (TMDB)" width="100" height="13"></a>
+      <p>Title logos and additional artwork, when available, are provided by TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+      <p>Anime ID mappings: <a href="https://github.com/Fribb/anime-lists" target="_blank" rel="noopener noreferrer">Fribb/anime-lists</a> and its upstream contributors. Artwork belongs to its respective owners.</p>
+    </section>
   </main>
 </body>
 </html>

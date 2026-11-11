@@ -145,7 +145,13 @@ function episodeVideo(animeId, number, attributes = {}) {
   };
 }
 
-export function createKitsuService(api = createApiClient()) {
+export function createKitsuService(api = createApiClient(), { artwork } = {}) {
+  function preview(item, included) {
+    const meta = toMeta(item, included);
+    artwork?.remember(item, meta);
+    return artwork ? artwork.decorate(meta) : meta;
+  }
+
   async function catalog(id, extra = {}) {
     const definition = CATALOGS[id];
     if (!definition) throw new ApiError('Catalog not found.', 404);
@@ -175,7 +181,7 @@ export function createKitsuService(api = createApiClient()) {
       pages.push(...await Promise.all(numbers.map(number => api.request('anime', { ...params, 'page[number]': number }))));
     }
     const seen = new Set();
-    const metas = pages.flatMap(page => page.data.map(item => toMeta(item, page.included)))
+    const metas = pages.flatMap(page => page.data.map(item => preview(item, page.included)))
       .filter(meta => !seen.has(meta.id) && seen.add(meta.id))
       .slice(firstIndex, firstIndex + CATALOG_PAGE_SIZE);
     return { metas };
@@ -188,7 +194,8 @@ export function createKitsuService(api = createApiClient()) {
     const data = await api.request(`anime/${animeId}`, { include: 'categories' }, 3600);
     if (!data.data || Array.isArray(data.data)) throw new ApiError('Anime not found.', 404);
     const a = data.data.attributes || {};
-    const meta = toMeta(data.data, data.included);
+    const meta = preview(data.data, data.included);
+    const enriched = artwork?.enrich(meta, data.data);
     const path = `anime/${animeId}/episodes`;
     let episodePages = [];
     try {
@@ -222,7 +229,7 @@ export function createKitsuService(api = createApiClient()) {
     if (!numbers.size && a.subtype?.toLowerCase() === 'movie') numbers.add(1);
     meta.videos = [...numbers].sort((a, b) => a - b).map(number => episodeVideo(animeId, number, actual.get(number)));
     if (meta.videos.length === 1) meta.behaviorHints = { defaultVideoId: meta.videos[0].id };
-    return { meta };
+    return { meta: enriched ? { ...meta, ...await enriched } : meta };
   }
 
   return { catalog, metadata };
