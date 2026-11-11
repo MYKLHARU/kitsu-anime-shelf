@@ -18,6 +18,7 @@ export function boundedCache({ maxEntries = 2048, maxBytes = Infinity, now = Dat
     entries.delete(key);
   }
   return {
+    delete(key) { remove(key); },
     get(key) {
       const entry = entries.get(key);
       if (!entry) return undefined;
@@ -128,23 +129,25 @@ export function chooseLogo(logos = []) {
 
 export async function composePoster(poster, logo) {
   const options = { limitInputPixels: 16000000, animated: false };
-  const base = await sharp(poster, options).rotate().resize(360, 540, { fit: 'cover' }).toBuffer();
-  const mark = await sharp(logo, options).trim().resize(304, 116, { fit: 'inside' }).png().toBuffer();
-  const info = await sharp(mark).metadata();
+  const { data: mark, info } = await sharp(logo, options).trim().resize(304, 116, { fit: 'inside' })
+    .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const shade = Buffer.from('<svg width="360" height="540"><defs><linearGradient id="g" x2="0" y2="1"><stop offset="0" stop-opacity="0"/><stop offset="1" stop-opacity=".92"/></linearGradient></defs><rect y="320" width="360" height="220" fill="url(#g)"/></svg>');
-  const pipeline = sharp(base).composite([
+  // Composite and encode once. Avoid an intermediate JPEG plus the expensive
+  // mozjpeg compression pass on a small shared CPU.
+  const pipeline = sharp(poster, options).rotate().resize(360, 540, { fit: 'cover' }).composite([
     { input: shade, top: 0, left: 0 },
-    { input: mark, top: 540 - info.height - 28, left: Math.floor((360 - info.width) / 2) }
+    { input: mark, raw: { width: info.width, height: info.height, channels: info.channels },
+      top: 540 - info.height - 28, left: Math.floor((360 - info.width) / 2) }
   ]);
   for (const quality of [82, 68, 50]) {
-    const result = await pipeline.clone().jpeg({ quality, mozjpeg: true }).toBuffer();
+    const result = await pipeline.clone().jpeg({ quality }).toBuffer();
     if (result.length < 100000) return result;
   }
   throw new Error('Rendered poster is too large.');
 }
 
 export function createArtworkService({ getAnime, token = '', apiKey = '', publicUrl = '', fetchImpl = fetch, now = Date.now,
-  mappingLoader, posterCacheBytes = 16 * 1024 * 1024 } = {}) {
+  mappingLoader, posterCacheBytes = 32 * 1024 * 1024 } = {}) {
   const enabled = Boolean(token.trim() || apiKey.trim());
   if (enabled) {
     if (!publicUrl) throw new Error('PUBLIC_URL is required when TMDB credentials are set.');
@@ -159,8 +162,10 @@ export function createArtworkService({ getAnime, token = '', apiKey = '', public
   const resolved = boundedCache({ now });
   const apiCache = boundedCache({ maxEntries: 256, maxBytes: 8 * 1024 * 1024, now });
   const posters = boundedCache({ maxEntries: 512, maxBytes: posterCacheBytes, now });
+  const images = boundedCache({ maxEntries: 256, maxBytes: 8 * 1024 * 1024, now });
   const pending = new Map();
   const requests = limiter(3);
+  const imageRequests = limiter(4);
   const renders = limiter(2, 24);
   let mappings;
   let mappingExpires = 0;
@@ -289,14 +294,22 @@ export function createArtworkService({ getAnime, token = '', apiKey = '', public
 
   async function download(url) {
     if (!safeImageUrl(url)) throw new Error('Unsupported artwork URL.');
-    return requests(async () => {
+    const cached = images.get(url);
+    if (cached) return cached;
+    return once(`download:${url}`, () => imageRequests(async () => {
       const response = await fetchImpl(url, { redirect: 'error', signal: AbortSignal.timeout(5000) });
       if (!/^image\/(png|jpeg|webp)(?:;|$)/i.test(response.headers.get('content-type') || '')) {
         await response.body?.cancel();
         throw new Error('Unsupported artwork format.');
       }
-      return readLimited(response, 4 * 1024 * 1024);
-    });
+      const buffer = await readLimited(response, 4 * 1024 * 1024);
+      const info = await sharp(buffer, { limitInputPixels: 16000000, animated: false }).metadata();
+      if (!['jpeg', 'png', 'webp'].includes(info.format) || !info.width || !info.height || info.width * info.height > 16000000) {
+        throw new Error('Unsupported artwork image.');
+      }
+      images.set(url, buffer, DAY, buffer.length);
+      return buffer;
+    }));
   }
 
   async function poster(id) {
@@ -311,17 +324,22 @@ export function createArtworkService({ getAnime, token = '', apiKey = '', public
     return once(`poster:${id}`, async () => {
       const saved = await record(id);
       const fallback = saved.poster ? { redirect: saved.poster } : null;
+      let art;
       try {
-        const art = enabled ? await resolve(id, saved.attributes) : null;
+        art = enabled ? await resolve(id, saved.attributes) : null;
         if (!art) { posters.set(id, fallback, 60000); return fallback; }
         const buffer = await renders(async () => {
-          const [base, logo] = await Promise.all([download(art.poster || saved.poster), download(art.logo)]);
-          return composePoster(base, logo);
+          const sources = await Promise.allSettled([download(art.poster || saved.poster), download(art.logo)]);
+          const failed = sources.find(source => source.status === 'rejected');
+          if (failed) throw failed.reason;
+          return composePoster(sources[0].value, sources[1].value);
         });
         const result = { buffer, etag: `"${createHash('sha256').update(buffer).digest('hex')}"` };
         posters.set(id, result, 7 * DAY, buffer.length);
         return result;
       } catch {
+        // A corrupt upstream image must not remain in the source cache all day.
+        if (art) { images.delete(art.poster || saved.poster); images.delete(art.logo); }
         posters.set(id, fallback, 60000);
         return fallback;
       }

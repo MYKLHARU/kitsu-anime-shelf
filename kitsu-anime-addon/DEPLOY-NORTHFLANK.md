@@ -4,6 +4,10 @@ Service: [kitsu-anime-addon](https://app.northflank.com/t/toshiharus-team/projec
 
 Public URL: `https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run`
 
+## Poster-speed update (1.3.2)
+
+Deploy the reviewed 1.3.2 change through the same service with the existing runtime variables. This update speeds up generated title-logo posters; it does not disable the overlays or require a hosting upgrade. Confirm `/manifest.json` reports 1.3.2 and run `npm run test:artwork -- https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run`, followed by the season check below. Compare a small parallel set of first-time poster requests and repeat requests, rather than checking only an already-cached image. Caches reset on deployment, so the first render still includes provider/network work. See VERIFIED-POSTER-SPEED.md for the pre-deployment measurements and limits.
+
 ## Category-speed update (1.3.1)
 
 Deploy the reviewed 1.3.1 release through the existing service. No runtime variables, hosting plan, dependency changes or paid services are needed. It adds complete first-page caching with background refresh and lighter Kitsu requests, while preserving season grouping and logos. Confirm `/manifest.json` reports 1.3.1 and run the existing live season/artwork checks below.
@@ -64,7 +68,7 @@ The new release adds `sharp`, so a rebuild that installs dependencies is require
 
 ## 4. Verify and refresh Stremio
 
-1. Open [`/manifest.json`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/manifest.json) and confirm version `1.3.1`.
+1. Open [`/manifest.json`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/manifest.json) and confirm version `1.3.2`.
 2. Open [`/health`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/health) and confirm `titleLogos: true`. This means configured, not that TMDB has accepted the credential.
 3. Open [`/meta/series/kitsu:1.json`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/meta/series/kitsu:1.json): Cowboy Bebop should keep its 26 episode videos and, when TMDB has a suitable PNG, include a `logo` URL on `image.tmdb.org`. Its `poster` should use your `/artwork/v1/poster/` route.
 4. In a checked-out addon directory run `npm ci`, `npm test`, then `npm run test:artwork -- https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run`. The final check tests real TV/film logo PNGs, JPEG size/dimensions, episodes and ETag/304 behavior. It reports failures if credentials are rejected or all sample logos fall back. Run `npm run test:live` for the broader Kitsu checks.

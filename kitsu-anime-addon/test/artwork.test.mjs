@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import { setTimeout as delay } from 'node:timers/promises';
+import { setImmediate } from 'node:timers/promises';
+import { randomFillSync } from 'node:crypto';
 import { createArtworkService, composePoster, chooseLogo, strictTitleMatch, safeImageUrl, boundedCache } from '../src/artwork.mjs';
 import { createKitsuService } from '../src/kitsu.mjs';
 import { createAddonServer } from '../src/addon.mjs';
@@ -165,6 +167,75 @@ test('image fetch/render is deduplicated, cached, and shared across poster reque
   assert.ok(results.every(result => result.etag === results[0].etag && result.buffer.equals(results[0].buffer)));
   await artwork.poster('1');
   assert.equal(urls.length, 3);
+});
+
+test('cached source images avoid downloads even after a composite is evicted', async () => {
+  const input = await fixtures();
+  const urls = [];
+  const artwork = setup({ posterCacheBytes: 1, fetchImpl: async url => {
+    urls.push(url);
+    if (url.startsWith('https://api.themoviedb.org')) return json({ logos: [pngLogo()] });
+    return new Response(url.endsWith('.png') ? input.logo : input.poster,
+      { headers: { 'Content-Type': url.endsWith('.png') ? 'image/png' : 'image/jpeg' } });
+  } });
+  const a = await artwork.poster('1');
+  const b = await artwork.poster('1');
+  assert.ok(a.buffer.equals(b.buffer));
+  assert.equal(urls.length, 3, 'Evicting a composite must not force redownloading both source images');
+});
+
+test('slow TMDB lookups cannot block image downloads for an already resolved title', async () => {
+  const input = await fixtures();
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const images = [];
+  const artwork = setup({ mappingLoader: async () => [1,2,3,4].map(id => ({ kitsu_id: id, themoviedb_id: { tv: 30990 + id } })),
+    fetchImpl: async url => {
+      if (url.startsWith('https://api.themoviedb.org')) {
+        if (!url.includes('/tv/30991/')) await gate;
+        return json({ logos: [pngLogo()] });
+      }
+      images.push(url);
+      return new Response(url.endsWith('.png') ? input.logo : input.poster,
+        { headers: { 'Content-Type': url.endsWith('.png') ? 'image/png' : 'image/jpeg' } });
+    }
+  });
+  await artwork.enrich(preview, item);
+  const lookups = [2,3,4].map(id => artwork.enrich({ ...preview, id: `kitsu:${id}` }, { ...item, id: String(id) }));
+  await setImmediate();
+  const poster = artwork.poster('1');
+  await setImmediate();
+  try { assert.equal(images.length, 2, 'Poster and logo downloads should start before blocked metadata lookups finish'); }
+  finally { release(); }
+  const [result] = await Promise.all([poster, ...lookups]);
+  assert.ok(result.buffer);
+});
+
+test('fast JPEG output stays below the image budget even for detailed noisy artwork', async () => {
+  const noise = randomFillSync(Buffer.alloc(400 * 600 * 3));
+  const poster = await sharp(noise, { raw: { width: 400, height: 600, channels: 3 } }).png().toBuffer();
+  const { logo } = await fixtures();
+  const result = await composePoster(poster, logo);
+  assert.ok(result.length < 100000);
+  const info = await sharp(result).metadata();
+  assert.equal(info.format, 'jpeg');
+  assert.equal(info.width, 360);
+  assert.equal(info.height, 540);
+});
+
+test('a corrupt image is retried after the short fallback cache rather than retained for a day', async () => {
+  const input = await fixtures();
+  let clock = 0;
+  let corrupt = true;
+  const artwork = setup({ now: () => clock, fetchImpl: async url => {
+    if (url.startsWith('https://api.themoviedb.org')) return json({ logos: [pngLogo()] });
+    return new Response(corrupt ? Buffer.from('corrupt image') : url.endsWith('.png') ? input.logo : input.poster,
+      { headers: { 'Content-Type': url.endsWith('.png') ? 'image/png' : 'image/jpeg' } });
+  } });
+  assert.deepEqual(await artwork.poster('1'), { redirect: original });
+  corrupt = false;
+  clock = 61000;
+  assert.ok((await artwork.poster('1')).buffer);
 });
 
 test('malformed/oversized image responses redirect to Kitsu and never become metadata errors', async () => {
