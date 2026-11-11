@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
+import { createAnimeMappingLoader } from './anime-mappings.mjs';
 
 const DAY = 86400000;
-const MAPPINGS_URL = 'https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-mini.json';
 const TMDB_API = 'https://api.themoviedb.org/3/';
 const KITSU_HOSTS = new Set(['media.kitsu.app', 'media.kitsu.io', 'kitsu-production-media.s3.amazonaws.com']);
 // Avoid libvips retaining a second, unbounded image cache on a small host.
@@ -166,6 +166,7 @@ export function createArtworkService({ getAnime, token = '', apiKey = '', public
   let mappingExpires = 0;
   let mappingRetry = 0;
   let blockedUntil = 0;
+  mappingLoader ??= createAnimeMappingLoader({ fetchImpl, now });
 
   async function once(key, operation) {
     if (pending.has(key)) return pending.get(key);
@@ -205,7 +206,7 @@ export function createArtworkService({ getAnime, token = '', apiKey = '', public
     if (mappingRetry > now()) return mappings;
     return once('mappings', async () => {
       try {
-        mappings = mappingIndex(mappingLoader ? await mappingLoader() : await json(MAPPINGS_URL, {}, 10 * 1024 * 1024));
+        mappings = mappingIndex(await mappingLoader());
         mappingExpires = now() + DAY;
       } catch { mappingRetry = now() + 300000; }
       return mappings;

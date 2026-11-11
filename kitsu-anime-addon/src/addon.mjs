@@ -2,13 +2,15 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { ApiError, CATALOGS, createApiClient, createKitsuService } from './kitsu.mjs';
 import { createArtworkService } from './artwork.mjs';
+import { createAnimeMappingLoader } from './anime-mappings.mjs';
+import { createSeasonGroups } from './season-groups.mjs';
 
 export const manifest = {
   id: 'personal.kitsu.anime.shelf',
-  version: '1.2.0',
+  version: '1.3.0',
   name: 'Kitsu Anime Shelf',
   logo: 'https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/logo.png',
-  description: 'Anime discovery from Kitsu.app with 40 main category catalogs, plus popular, top rated, currently airing, films, and search.',
+  description: 'Anime discovery from Kitsu.app with grouped TV seasons, 40 main category catalogs, popular, top rated, currently airing, films, and search.',
   types: ['series'],
   resources: [
     { name: 'catalog', types: ['series'] },
@@ -62,17 +64,21 @@ function parseExtra(raw, url) {
 }
 
 export function createAddonServer({ service, artwork, logger = console,
-  publicUrl = process.env.PUBLIC_URL || '', token = process.env.TMDB_READ_ACCESS_TOKEN || '', apiKey = process.env.TMDB_API_KEY || '' } = {}) {
+  publicUrl = process.env.PUBLIC_URL || '', token = process.env.TMDB_READ_ACCESS_TOKEN || '', apiKey = process.env.TMDB_API_KEY || '',
+  groupSeasons = process.env.GROUP_ANIME_SEASONS !== 'false' } = {}) {
+  const groupingEnabled = !service && groupSeasons;
   if (!service) {
     const api = createApiClient();
-    artwork ??= createArtworkService({ token, apiKey, publicUrl,
+    const loadMappings = createAnimeMappingLoader();
+    const seasonGroups = groupSeasons ? createSeasonGroups({ loadMappings }) : undefined;
+    artwork ??= createArtworkService({ token, apiKey, publicUrl, mappingLoader: loadMappings,
       getAnime: async id => {
         const result = await api.request(`anime/${id}`, { include: 'categories' }, 3600);
         if (!result.data || Array.isArray(result.data)) throw new ApiError('Anime not found.', 404);
         return result.data;
       }
     });
-    service = createKitsuService(api, { artwork });
+    service = createKitsuService(api, { artwork, seasonGroups });
   }
   return http.createServer(async (request, response) => {
     response.setHeader('Access-Control-Allow-Origin', '*');
@@ -96,7 +102,8 @@ export function createAddonServer({ service, artwork, logger = console,
         response.end(contents);
         return;
       }
-      if (url.pathname === '/health') { json(response, 200, { status: 'ok', name: manifest.name, titleLogos: Boolean(artwork?.enabled) }); return; }
+      if (url.pathname === '/health') { json(response, 200, { status: 'ok', name: manifest.name,
+        titleLogos: Boolean(artwork?.enabled), seasonGrouping: groupingEnabled }); return; }
       if (url.pathname === '/manifest.json') { json(response, 200, manifest, 300); return; }
       const poster = /^\/artwork\/v1\/poster\/kitsu:([1-9]\d{0,9})\.jpg$/.exec(url.pathname);
       if (poster && artwork) {

@@ -1,5 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { CATEGORIES } from './categories.mjs';
+import { createGroupedCatalog, groupedMetadata } from './season-groups.mjs';
 
 const API_BASE = 'https://kitsu.app/api/edge/';
 const API_PAGE_SIZE = 20;
@@ -145,12 +146,13 @@ function episodeVideo(animeId, number, attributes = {}) {
   };
 }
 
-export function createKitsuService(api = createApiClient(), { artwork } = {}) {
+export function createKitsuService(api = createApiClient(), { artwork, seasonGroups, now = Date.now } = {}) {
   function preview(item, included) {
     const meta = toMeta(item, included);
     artwork?.remember(item, meta);
     return artwork ? artwork.decorate(meta) : meta;
   }
+  const groupedCatalog = seasonGroups ? createGroupedCatalog({ api, preview, now }) : undefined;
 
   async function catalog(id, extra = {}) {
     const definition = CATALOGS[id];
@@ -166,6 +168,11 @@ export function createKitsuService(api = createApiClient(), { artwork } = {}) {
     if (definition.status) params['filter[status]'] = definition.status;
     if (definition.subtype) params['filter[subtype]'] = definition.subtype;
     if (definition.category) params['filter[categories]'] = definition.category;
+
+    if (groupedCatalog && !definition.subtype) {
+      const index = await seasonGroups.index();
+      if (index?.byMember.size) return groupedCatalog(id, params, skip, index);
+    }
 
     // Kitsu's Typesense search currently repeats the first page for offset=20.
     // Its number/size paginator works for both filtered and unfiltered anime.
@@ -187,7 +194,7 @@ export function createKitsuService(api = createApiClient(), { artwork } = {}) {
     return { metas };
   }
 
-  async function metadata(id) {
+  async function singleMetadata(id, { enrichArtwork = true } = {}) {
     const match = /^kitsu:([1-9]\d*)$/.exec(id);
     if (!match) throw new ApiError('Anime not found.', 404);
     const animeId = match[1];
@@ -195,7 +202,7 @@ export function createKitsuService(api = createApiClient(), { artwork } = {}) {
     if (!data.data || Array.isArray(data.data)) throw new ApiError('Anime not found.', 404);
     const a = data.data.attributes || {};
     const meta = preview(data.data, data.included);
-    const enriched = artwork?.enrich(meta, data.data);
+    const enriched = enrichArtwork ? artwork?.enrich(meta, data.data) : undefined;
     const path = `anime/${animeId}/episodes`;
     let episodePages = [];
     try {
@@ -230,6 +237,15 @@ export function createKitsuService(api = createApiClient(), { artwork } = {}) {
     meta.videos = [...numbers].sort((a, b) => a - b).map(number => episodeVideo(animeId, number, actual.get(number)));
     if (meta.videos.length === 1) meta.behaviorHints = { defaultVideoId: meta.videos[0].id };
     return { meta: enriched ? { ...meta, ...await enriched } : meta };
+  }
+
+  async function metadata(id) {
+    const match = /^kitsu:([1-9]\d*)$/.exec(id);
+    if (!match) throw new ApiError('Anime not found.', 404);
+    const group = (await seasonGroups?.index())?.byRoot.get(match[1]);
+    // Previously installed child-season library entries keep their original
+    // metadata/numbering. New catalog results always lead to the root entry.
+    return group ? groupedMetadata(group, singleMetadata) : singleMetadata(id);
   }
 
   return { catalog, metadata };

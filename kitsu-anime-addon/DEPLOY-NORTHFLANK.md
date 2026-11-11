@@ -4,6 +4,19 @@ Service: [kitsu-anime-addon](https://app.northflank.com/t/toshiharus-team/projec
 
 Public URL: `https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run`
 
+## Season-grouping update (1.3.0)
+
+For an existing 1.2.0 deployment with working title logos, keep all current runtime variables and build settings. Merge/deploy the reviewed 1.3.0 change through the same service. TV grouping is enabled by default and requires no additional API credential or paid service. `GROUP_ANIME_SEASONS=false` disables grouping if a rollback is needed.
+
+After deployment, confirm `/manifest.json` reports `1.3.0` and `/health` reports `seasonGrouping: true`. Run:
+
+```text
+npm run test:seasons -- https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run
+npm run test:artwork -- https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run
+```
+
+Remove/reinstall or refresh the addon in Stremio, then search **My Hero Academia** in the Kitsu catalog and open the main show. It should expose seasons 1–8. Existing saved cards for individual later seasons intentionally keep their old numbering, so replace those library cards with the main show if you want the grouped view. Catalog responses can remain cached for 15 minutes and metadata for an hour. See the README for conservative matching, split-cour limitations and browsing-cache limits.
+
 ## 1. Obtain the free logo-source credential
 
 Create/sign in to a [TMDB account](https://www.themoviedb.org/settings/api), apply for a non-commercial developer API key, and copy either the short **API Key** or the long **API Read Access Token**. Both formats are supported using separate runtime variable names. TMDB documents [authentication](https://developer.themoviedb.org/docs/authentication-application) and [free non-commercial usage with attribution](https://developer.themoviedb.org/docs/faq). The setup page supplies the required credits and approved logo.
@@ -45,7 +58,7 @@ The new release adds `sharp`, so a rebuild that installs dependencies is require
 
 ## 4. Verify and refresh Stremio
 
-1. Open [`/manifest.json`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/manifest.json) and confirm version `1.2.0`.
+1. Open [`/manifest.json`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/manifest.json) and confirm version `1.3.0`.
 2. Open [`/health`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/health) and confirm `titleLogos: true`. This means configured, not that TMDB has accepted the credential.
 3. Open [`/meta/series/kitsu:1.json`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/meta/series/kitsu:1.json): Cowboy Bebop should keep its 26 episode videos and, when TMDB has a suitable PNG, include a `logo` URL on `image.tmdb.org`. Its `poster` should use your `/artwork/v1/poster/` route.
 4. In a checked-out addon directory run `npm ci`, `npm test`, then `npm run test:artwork -- https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run`. The final check tests real TV/film logo PNGs, JPEG size/dimensions, episodes and ETag/304 behavior. It reports failures if credentials are rejected or all sample logos fall back. Run `npm run test:live` for the broader Kitsu checks.

@@ -12,7 +12,7 @@ async function request(path, options = {}) {
 const health = await (await request('/health')).json();
 assert.equal(health.titleLogos, true, 'Title logos are disabled. Set TMDB_API_KEY (or TMDB_READ_ACCESS_TOKEN) and PUBLIC_URL, then redeploy.');
 const manifest = await (await request('/manifest.json')).json();
-assert.equal(manifest.version, '1.2.0');
+assert.ok(manifest.version, 'Manifest version is missing.');
 let logos = 0;
 for (const id of ['1', '142']) { // Cowboy Bebop; Princess Mononoke (TV and film).
   const { meta } = await (await request(`/meta/series/kitsu:${id}.json`)).json();
