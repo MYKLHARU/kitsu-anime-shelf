@@ -121,10 +121,30 @@ function imagePath(path, size = 'w500') {
 
 export function chooseLogo(logos = []) {
   const rank = new Map([['en', 0], [null, 1], ['ja', 2]]);
-  return [...logos].filter(logo => rank.has(logo.iso_639_1) && logo.width > 0 && logo.height > 0 &&
+  return [...(Array.isArray(logos) ? logos : [])].filter(logo => rank.has(logo.iso_639_1) && logo.width > 0 && logo.height > 0 &&
     logo.file_path?.endsWith('.png') && imagePath(logo.file_path))
     .sort((a, b) => rank.get(a.iso_639_1) - rank.get(b.iso_639_1) ||
       (b.vote_count || 0) - (a.vote_count || 0) || (b.width || 0) - (a.width || 0))[0];
+}
+
+export function chooseBackdrop(backdrops = []) {
+  const language = new Map([[null, 0], ['en', 1], ['ja', 2]]);
+  function score(image) {
+    const votes = Math.max(0, Number(image.vote_count) || 0);
+    const rating = Math.min(10, Math.max(0, Number(image.vote_average) || 0));
+    return (rating * votes + 60) / (votes + 10);
+  }
+  return [...(Array.isArray(backdrops) ? backdrops : [])].filter(image => language.has(image.iso_639_1) &&
+    Number.isFinite(image.width) && Number.isFinite(image.height) && image.width >= 1280 && image.height >= 720 &&
+    image.width / image.height >= 1.6 && image.width / image.height <= 2 &&
+    image.file_path?.endsWith('.jpg') && imagePath(image.file_path))
+    .sort((a, b) => language.get(a.iso_639_1) - language.get(b.iso_639_1) || score(b) - score(a) ||
+      Math.abs(a.width / a.height - 16 / 9) - Math.abs(b.width / b.height - 16 / 9) ||
+      b.width - a.width || a.file_path.localeCompare(b.file_path))[0];
+}
+
+function coverImage(attributes = {}) {
+  return ['large', 'original', 'small'].map(size => safeImageUrl(attributes.coverImage?.[size])).find(Boolean);
 }
 
 export async function composePoster(poster, logo) {
@@ -219,7 +239,8 @@ export function createArtworkService({ getAnime, token = '', apiKey = '', public
   }
 
   function remember(item, meta) {
-    records.set(String(item.id), { attributes: matchAttributes(item.attributes), poster: safeImageUrl(meta.poster) }, DAY);
+    records.set(String(item.id), { attributes: matchAttributes(item.attributes), poster: safeImageUrl(meta.poster),
+      background: coverImage(item.attributes) || safeImageUrl(meta.background) }, DAY);
   }
 
   function matchAttributes(a = {}) {
@@ -227,7 +248,11 @@ export function createArtworkService({ getAnime, token = '', apiKey = '', public
   }
 
   function decorate(meta) {
-    return enabled && safeImageUrl(meta.poster) ? { ...meta, poster: `${publicUrl}/artwork/v1/poster/${meta.id}.jpg` } : meta;
+    if (!enabled) return meta;
+    return { ...meta,
+      ...(safeImageUrl(meta.poster) ? { poster: `${publicUrl}/artwork/v1/poster/${meta.id}.jpg` } : {}),
+      ...(/^kitsu:[1-9]\d{0,9}$/.test(meta.id) ? { background: `${publicUrl}/artwork/v1/background/${meta.id}.jpg` } : {})
+    };
   }
 
   async function record(id) {
@@ -236,7 +261,7 @@ export function createArtworkService({ getAnime, token = '', apiKey = '', public
     const item = await getAnime(id);
     const a = item.attributes || {};
     const poster = ['medium', 'small', 'large', 'original'].map(size => safeImageUrl(a.posterImage?.[size])).find(Boolean);
-    const value = { attributes: matchAttributes(a), poster };
+    const value = { attributes: matchAttributes(a), poster, background: coverImage(a) };
     records.set(id, value, DAY);
     return value;
   }
@@ -265,13 +290,16 @@ export function createArtworkService({ getAnime, token = '', apiKey = '', public
         if (match) {
           const images = await tmdb(`${match.type}/${match.id}/images`, { include_image_language: 'en,null,ja' });
           const logo = chooseLogo(images.logos);
-          if (logo) {
+          const backdrop = chooseBackdrop(images.backdrops);
+          if (logo || backdrop) {
             // Use textless art only for a title matched by name/year or a film.
             // A mapped TV entry can be a later Kitsu season of the same series.
-            const textless = (type === 'movie' || !matching.length) && (images.posters || [])
+            const textless = logo && (type === 'movie' || !matching.length) && (images.posters || [])
               .filter(poster => poster.iso_639_1 === null && imagePath(poster.file_path))
               .sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0))[0];
-            result = { logo: imagePath(logo.file_path), poster: textless ? imagePath(textless.file_path, 'w342') : undefined };
+            result = { logo: logo ? imagePath(logo.file_path) : undefined,
+              background: backdrop ? imagePath(backdrop.file_path, 'w1280') : undefined,
+              poster: textless ? imagePath(textless.file_path, 'w342') : undefined };
           }
         }
         resolved.set(id, result, result ? 7 * DAY : DAY);
@@ -286,10 +314,25 @@ export function createArtworkService({ getAnime, token = '', apiKey = '', public
 
   async function enrich(meta, item) {
     if (!enabled) return meta;
+    let result;
     try {
-      const result = await resolve(String(item.id), item.attributes || {});
-      return result ? { ...meta, logo: result.logo } : meta;
-    } catch { return meta; }
+      result = await resolve(String(item.id), item.attributes || {});
+    } catch { /* Retain the larger Kitsu cover during artwork outages. */ }
+    const value = { ...meta, ...(result?.logo ? { logo: result.logo } : {}) };
+    const background = result?.background || coverImage(item.attributes) || safeImageUrl(meta.background);
+    if (background) value.background = background;
+    else delete value.background;
+    return value;
+  }
+
+  async function background(id) {
+    if (!/^[1-9]\d{0,9}$/.test(id)) return null;
+    const saved = await record(id);
+    let art;
+    try { if (enabled) art = await resolve(id, saved.attributes); }
+    catch { /* The original cover remains available when artwork is busy. */ }
+    const url = art?.background || saved.background;
+    return url ? { redirect: url, cacheSeconds: art?.background ? 604800 : 300 } : null;
   }
 
   async function download(url) {
@@ -327,7 +370,7 @@ export function createArtworkService({ getAnime, token = '', apiKey = '', public
       let art;
       try {
         art = enabled ? await resolve(id, saved.attributes) : null;
-        if (!art) { posters.set(id, fallback, 60000); return fallback; }
+        if (!art?.logo) { posters.set(id, fallback, 60000); return fallback; }
         const buffer = await renders(async () => {
           const sources = await Promise.allSettled([download(art.poster || saved.poster), download(art.logo)]);
           const failed = sources.find(source => source.status === 'rejected');
@@ -346,5 +389,5 @@ export function createArtworkService({ getAnime, token = '', apiKey = '', public
     });
   }
 
-  return { enabled, remember, decorate, enrich, poster };
+  return { enabled, remember, decorate, enrich, poster, background };
 }

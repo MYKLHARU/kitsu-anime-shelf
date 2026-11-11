@@ -128,7 +128,7 @@ export function toMeta(item, included = []) {
     name: title(a, `Anime ${item.id}`),
     poster: image(a.posterImage, 'medium', 'small', 'large', 'original'),
     posterShape: 'poster',
-    background: image(a.coverImage, 'small', 'large', 'original'),
+    background: image(a.coverImage, 'large', 'original', 'small'),
     description: a.synopsis || a.description || undefined,
     releaseInfo: year ? (a.status === 'current' ? `${year}-` : endYear && endYear !== year ? `${year}-${endYear}` : year) : undefined,
     released: realDate(a.startDate),

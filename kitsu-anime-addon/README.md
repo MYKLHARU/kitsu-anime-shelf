@@ -87,17 +87,30 @@ TMDB is [free for non-commercial use with attribution](https://developer.themovi
 
 Version 1.3.2 speeds up custom poster overlays without removing the title logos. It composites and JPEG-encodes once, uses the fast JPEG encoder rather than the slower mozjpeg settings, and avoids intermediate JPEG/PNG encode/decode passes. Repeated source images are cached and deduplicated, and image downloads have their own queue so they do not wait behind unrelated title-logo API lookups. Corrupt source images are invalidated so a short fallback does not turn into a day-long bad cache entry. JPEGs can be slightly larger than the previous output but remain below 100 KB; the artwork layout is unchanged. First-time posters can still wait for upstream images, especially during large bursts or provider outages.
 
+## Stremio hero backgrounds
+
+Version 1.4.0 supplies wide HD backgrounds for the Kitsu addon cards and details pages. It reuses the same conservative TMDB match and images response as title logos, so a background does not require another provider lookup. Backgrounds work even when the matched title has no logo.
+
+- Prefer language-neutral JPEG backdrops, then English, then Japanese. Candidates must be at least 1280×720 and near 16:9; ranking balances community ratings with vote confidence. A language-neutral tag is a preference, not a guarantee that an image contains no lettering.
+- Use TMDB's `w1280` CDN variant instead of transferring multi-megabyte original images. Details expose the CDN URL directly. Catalog cards receive a lazy background URL that returns a cacheable redirect only when Stremio requests the image. Catalog loading performs no new artwork lookups.
+- Northflank does not download, render, cache or proxy background image bytes. Successful redirects are cached for seven days; Kitsu fallback redirects for five minutes. Background selection shares the existing bounded artwork caches, deduplication and provider queues.
+- Missing matches, unsuitable backdrops and provider failures use the larger available Kitsu cover, including when TMDB is not configured. Posters, logos and original playback IDs keep their existing behavior.
+- Stremio chooses the hero layout and which catalogs appear in its featured area. This improves artwork supplied by this addon; it does not change the client's layout or other addons' images. Refresh/restart Stremio after deployment; previously loaded metadata can remain cached for an hour.
+
+See [VERIFIED-HERO.md](VERIFIED-HERO.md) for sample dimensions, sizes and checks.
+
 ## Checks and implementation
 
 ```
 npm test
 npm run test:live
 npm run test:artwork -- https://YOUR-ADDON-HOST
+npm run test:hero -- https://YOUR-ADDON-HOST
 npm run test:seasons
 npm run test:seasons -- https://YOUR-ADDON-HOST
 ```
 
-The automated tests check conservative season grouping, playback IDs, old individual-season links, unique-show pagination, provider failures, artwork rendering and HTTP behavior. GitHub Actions runs these on Node.js 22/Linux. The Kitsu live check queries real categories with grouping enabled, search and episodes. The season check validates My Hero Academia's eight seasons, separate films/spin-offs, existing individual-season compatibility and two full grouped catalog pages. Without an argument it queries providers directly; with a service URL it checks the running addon. The artwork live check requires TMDB credentials on the running instance.
+The automated tests check conservative season grouping, playback IDs, old individual-season links, unique-show pagination, provider failures, artwork rendering and HTTP behavior. GitHub Actions runs these on Node.js 22/Linux. The Kitsu live check queries real categories with grouping enabled, search and episodes. The season check validates My Hero Academia's eight seasons, separate films/spin-offs, existing individual-season compatibility and two full grouped catalog pages. Without an argument it queries providers directly; with a service URL it checks the running addon. The artwork and hero live checks require TMDB credentials on the running instance. The hero check validates three real backgrounds, CDN redirects, image dimensions/size and retained episode lists.
 
 The server implements the [Stremio add-on HTTP protocol](https://stremio.github.io/stremio-addon-sdk/protocol.html), including CORS. Kitsu requests use the public [JSON:API](https://github.com/hummingbird-me/api-docs), 20-item upstream pages, a maximum of three concurrent requests, timeouts, caching and request deduplication. Catalogs are cached for 15 minutes; metadata for one hour. Previously fetched data can be reused for up to 24 hours during a temporary upstream outage.
 
