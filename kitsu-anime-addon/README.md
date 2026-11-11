@@ -10,7 +10,7 @@ A complete Stremio anime catalog add-on using **https://kitsu.app** directly. No
 4. If the button does not open Stremio, paste **http://127.0.0.1:47861/manifest.json** into Stremio's add-on URL field and install it.
 5. Keep the server running while using the add-on. Press Ctrl+C in its terminal to stop it.
 
-Open Stremio's Discover view and select **Anime**. Each of your 40 categories is its own main catalog, selectable directly as Action, Adventure, Isekai, and so on. Each also appears as a separate catalog row where Stremio shows add-on catalogs. Search results appear under **Kitsu · Search**.
+Open Stremio's Discover view and select **Series**. These are anime catalogs, but they use Stremio's Series content type so individual anime can open their episode lists. Each of your 40 categories is its own main catalog, selectable directly as Action, Adventure, Isekai, and so on. Each also appears as a separate catalog row where Stremio shows add-on catalogs. Search results appear under **Kitsu · Search**.
 
 If you installed version 1.0.0, remove that add-on in Stremio and install again from the setup page so Stremio reads the updated catalog list.
 

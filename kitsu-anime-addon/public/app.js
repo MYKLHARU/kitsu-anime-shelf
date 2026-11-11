@@ -28,7 +28,7 @@ async function browse() {
   const catalog = query ? 'kitsu-search' : $('#catalog').value;
   const params = [];
   if (query) params.push(`search=${encodeURIComponent(query)}`);
-  const path = `/catalog/anime/${catalog}${params.length ? `/${params.join('&')}` : ''}.json`;
+  const path = `/catalog/series/${catalog}${params.length ? `/${params.join('&')}` : ''}.json`;
   const cards = $('#cards');
   cards.replaceChildren(...Array.from({ length: 12 }, () => {
     const card = document.createElement('div');

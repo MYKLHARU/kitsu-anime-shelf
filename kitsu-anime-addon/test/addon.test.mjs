@@ -15,12 +15,15 @@ const jsonResponse = (value, status = 200) => new Response(JSON.stringify(value)
 
 test('manifest advertises all 40 categories as main catalogs and isolates search', () => {
   assert.equal(manifest.catalogs.length, 45);
+  assert.deepEqual(manifest.types, ['series']);
+  assert.deepEqual(manifest.resources[0].types, ['series']);
+  assert.match(manifest.logo, /^https:\/\/.+\/logo\.png$/);
   assert.equal(CATEGORY_NAMES.length, 40);
   assert.deepEqual(manifest.catalogs.slice(0, 40).map(catalog => catalog.name), CATEGORY_NAMES);
   assert.equal(new Set(manifest.catalogs.map(catalog => catalog.id)).size, 45);
   for (const catalog of manifest.catalogs) {
     assert.equal(catalog.extra.some(extra => extra.name === 'genre'), false);
-    assert.equal(catalog.type, 'anime');
+    assert.equal(catalog.type, 'series');
   }
   assert.equal(manifest.catalogs.filter(catalog => catalog.extra.some(extra => extra.name === 'search' && extra.isRequired)).length, 1);
   assert.deepEqual(manifest.resources.map(resource => resource.name), ['catalog', 'meta']);
@@ -164,13 +167,34 @@ test('HTTP contract includes CORS, encoded extras, metadata errors and install a
   assert.equal((await manifestResponse.json()).id, manifest.id);
   assert.equal((await fetch(`${base}/manifest.json`, { method: 'OPTIONS' })).status, 204);
   assert.equal((await fetch(`${base}/manifest.json`, { method: 'POST' })).status, 405);
-  await fetch(`${base}/catalog/anime/kitsu-search/search=A%20%26%20B%20%2B%20C&skip=100.json`);
+  await fetch(`${base}/catalog/series/kitsu-search/search=A%20%26%20B%20%2B%20C&skip=100.json`);
   assert.deepEqual(received, { id: 'kitsu-search', extra: { search: 'A & B + C', skip: '100' } });
-  assert.equal((await fetch(`${base}/catalog/anime/kitsu-popular/genre=Action.json`)).status, 400);
-  assert.equal((await fetch(`${base}/catalog/anime/kitsu-search/search=%FF.json`)).status, 400);
+  assert.equal((await fetch(`${base}/catalog/series/kitsu-popular/genre=Action.json`)).status, 400);
+  assert.equal((await fetch(`${base}/catalog/series/kitsu-search/search=%FF.json`)).status, 400);
   assert.equal((await fetch(`${base}/meta/series/kitsu:999.json`)).status, 404);
   assert.equal((await fetch(`${base}/stream/series/kitsu:1:1.json`)).status, 404);
+  const logo = await fetch(`${base}/logo.png`);
+  assert.equal(logo.status, 200);
+  assert.match(logo.headers.get('content-type'), /^image\/png/);
+  assert.ok((await logo.arrayBuffer()).byteLength > 100);
+  // Preserve support for any previously cached anime catalog URLs.
+  assert.equal((await fetch(`${base}/catalog/anime/kitsu-popular.json`)).status, 200);
   const setup = await fetch(base);
   assert.equal(setup.status, 200);
   assert.match(await setup.text(), /Install in Stremio/);
+});
+
+// A Stremio series catalog should lead to metadata containing episode videos.
+test('series catalog items can open episode metadata through the HTTP contract', async t => {
+  const server = createAddonServer({ service: {
+    catalog: async () => ({ metas: [{ id: 'kitsu:1', type: 'series', name: 'Anime 1', poster: 'https://media.kitsu.app/poster.jpg' }] }),
+    metadata: async () => ({ meta: { id: 'kitsu:1', type: 'series', name: 'Anime 1', videos: [{ id: 'kitsu:1:1', season: 1, episode: 1, title: 'Episode 1' }] } })
+  } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const { metas } = await (await fetch(`${base}/catalog/series/kitsu-popular.json`)).json();
+  assert.equal(metas[0].type, 'series');
+  const { meta } = await (await fetch(`${base}/meta/series/${metas[0].id}.json`)).json();
+  assert.equal(meta.videos[0].id, 'kitsu:1:1');
 });
