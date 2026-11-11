@@ -4,6 +4,21 @@ Service: [kitsu-anime-addon](https://app.northflank.com/t/toshiharus-team/projec
 
 Public URL: `https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run`
 
+## Hero-background update (1.4.0)
+
+Deploy the reviewed 1.4.0 change through this same service. Keep the existing TMDB credentials, public URL, build settings and hosting plan; no new account or image storage is needed. This release uses wide HD TMDB backdrops with larger Kitsu covers as the fallback. Background bytes go directly from the image provider to Stremio, so Northflank serves only a small redirect for catalog background requests.
+
+With CI/CD enabled on `main`, merging the reviewed PR triggers the build and deployment. Confirm `/manifest.json` reports `1.4.0`, then run:
+
+```text
+npm test
+npm run test:hero -- https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run
+npm run test:artwork -- https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run
+npm run test:seasons -- https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run
+```
+
+The hero check verifies Cowboy Bebop, My Hero Academia and Princess Mononoke backgrounds and their redirects. Details should expose direct `image.tmdb.org/t/p/w1280/` URLs when suitable images exist. Restart/refresh Stremio and open a Kitsu addon title to see the updated background; metadata already loaded by the client can stay cached for an hour. Stremio controls the featured layout. See VERIFIED-HERO.md for validation and fallback limits. Roll back to the previous Northflank build if necessary.
+
 ## Poster-speed update (1.3.2)
 
 Deploy the reviewed 1.3.2 change through the same service with the existing runtime variables. This update speeds up generated title-logo posters; it does not disable the overlays or require a hosting upgrade. Confirm `/manifest.json` reports 1.3.2 and run `npm run test:artwork -- https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run`, followed by the season check below. Compare a small parallel set of first-time poster requests and repeat requests, rather than checking only an already-cached image. Caches reset on deployment, so the first render still includes provider/network work. See VERIFIED-POSTER-SPEED.md for the pre-deployment measurements and limits.
@@ -68,7 +83,7 @@ The new release adds `sharp`, so a rebuild that installs dependencies is require
 
 ## 4. Verify and refresh Stremio
 
-1. Open [`/manifest.json`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/manifest.json) and confirm version `1.3.2`.
+1. Open [`/manifest.json`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/manifest.json) and confirm version `1.4.0`.
 2. Open [`/health`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/health) and confirm `titleLogos: true`. This means configured, not that TMDB has accepted the credential.
 3. Open [`/meta/series/kitsu:1.json`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/meta/series/kitsu:1.json): Cowboy Bebop should keep its 26 episode videos and, when TMDB has a suitable PNG, include a `logo` URL on `image.tmdb.org`. Its `poster` should use your `/artwork/v1/poster/` route.
 4. In a checked-out addon directory run `npm ci`, `npm test`, then `npm run test:artwork -- https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run`. The final check tests real TV/film logo PNGs, JPEG size/dimensions, episodes and ETag/304 behavior. It reports failures if credentials are rejected or all sample logos fall back. Run `npm run test:live` for the broader Kitsu checks.

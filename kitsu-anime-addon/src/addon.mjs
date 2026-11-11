@@ -7,7 +7,7 @@ import { createSeasonGroups } from './season-groups.mjs';
 
 export const manifest = {
   id: 'personal.kitsu.anime.shelf',
-  version: '1.3.2',
+  version: '1.4.0',
   name: 'Kitsu Anime Shelf',
   logo: 'https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/logo.png',
   description: 'Anime discovery from Kitsu.app with grouped TV seasons, 40 main category catalogs, popular, top rated, currently airing, films, and search.',
@@ -105,6 +105,14 @@ export function createAddonServer({ service, artwork, logger = console,
       if (url.pathname === '/health') { json(response, 200, { status: 'ok', name: manifest.name,
         titleLogos: Boolean(artwork?.enabled), seasonGrouping: groupingEnabled }); return; }
       if (url.pathname === '/manifest.json') { json(response, 200, manifest, 300); return; }
+      const background = /^\/artwork\/v1\/background\/kitsu:([1-9]\d{0,9})\.jpg$/.exec(url.pathname);
+      if (background && artwork?.background) {
+        const result = await artwork.background(background[1]);
+        if (!result) throw new ApiError('Background not found.', 404);
+        response.writeHead(302, { Location: result.redirect, 'Cache-Control': `public, max-age=${result.cacheSeconds}` });
+        response.end();
+        return;
+      }
       const poster = /^\/artwork\/v1\/poster\/kitsu:([1-9]\d{0,9})\.jpg$/.exec(url.pathname);
       if (poster && artwork) {
         const result = await artwork.poster(poster[1]);
