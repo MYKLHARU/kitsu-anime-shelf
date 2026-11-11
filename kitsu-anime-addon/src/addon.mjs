@@ -1,10 +1,11 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { ApiError, CATALOGS, createKitsuService } from './kitsu.mjs';
+import { ApiError, CATALOGS, createApiClient, createKitsuService } from './kitsu.mjs';
+import { createArtworkService } from './artwork.mjs';
 
 export const manifest = {
   id: 'personal.kitsu.anime.shelf',
-  version: '1.1.1',
+  version: '1.2.0',
   name: 'Kitsu Anime Shelf',
   logo: 'https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/logo.png',
   description: 'Anime discovery from Kitsu.app with 40 main category catalogs, plus popular, top rated, currently airing, films, and search.',
@@ -32,7 +33,8 @@ const assets = new Map([
   ['/app.css', ['app.css', 'text/css; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/logo.svg', ['logo.svg', 'image/svg+xml']],
-  ['/logo.png', ['logo.png', 'image/png']]
+  ['/logo.png', ['logo.png', 'image/png']],
+  ['/tmdb.svg', ['tmdb.svg', 'image/svg+xml']]
 ]);
 
 function json(response, status, value, cache = 0) {
@@ -59,7 +61,19 @@ function parseExtra(raw, url) {
   return extra;
 }
 
-export function createAddonServer({ service = createKitsuService(), logger = console } = {}) {
+export function createAddonServer({ service, artwork, logger = console,
+  publicUrl = process.env.PUBLIC_URL || '', token = process.env.TMDB_READ_ACCESS_TOKEN || '', apiKey = process.env.TMDB_API_KEY || '' } = {}) {
+  if (!service) {
+    const api = createApiClient();
+    artwork ??= createArtworkService({ token, apiKey, publicUrl,
+      getAnime: async id => {
+        const result = await api.request(`anime/${id}`, { include: 'categories' }, 3600);
+        if (!result.data || Array.isArray(result.data)) throw new ApiError('Anime not found.', 404);
+        return result.data;
+      }
+    });
+    service = createKitsuService(api, { artwork });
+  }
   return http.createServer(async (request, response) => {
     response.setHeader('Access-Control-Allow-Origin', '*');
     response.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
@@ -82,8 +96,28 @@ export function createAddonServer({ service = createKitsuService(), logger = con
         response.end(contents);
         return;
       }
-      if (url.pathname === '/health') { json(response, 200, { status: 'ok', name: manifest.name }); return; }
+      if (url.pathname === '/health') { json(response, 200, { status: 'ok', name: manifest.name, titleLogos: Boolean(artwork?.enabled) }); return; }
       if (url.pathname === '/manifest.json') { json(response, 200, manifest, 300); return; }
+      const poster = /^\/artwork\/v1\/poster\/kitsu:([1-9]\d{0,9})\.jpg$/.exec(url.pathname);
+      if (poster && artwork) {
+        const result = await artwork.poster(poster[1]);
+        if (!result) throw new ApiError('Poster not found.', 404);
+        if (result.redirect) {
+          response.writeHead(302, { Location: result.redirect, 'Cache-Control': 'public, max-age=60' });
+          response.end();
+          return;
+        }
+        const headers = { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=604800', ETag: result.etag };
+        const tags = (request.headers['if-none-match'] || '').split(',').map(tag => tag.trim().replace(/^W\//, ''));
+        if (tags.includes(result.etag) || tags.includes('*')) {
+          response.writeHead(304, headers);
+          response.end();
+          return;
+        }
+        response.writeHead(200, { ...headers, 'Content-Length': result.buffer.length });
+        response.end(request.method === 'HEAD' ? undefined : result.buffer);
+        return;
+      }
       const catalog = /^\/catalog\/(?:series|anime)\/([^/]+?)(?:\/([^/]+))?\.json$/.exec(url.pathname);
       if (catalog) {
         const result = await service.catalog(decodeURIComponent(catalog[1]), parseExtra(catalog[2], url));
