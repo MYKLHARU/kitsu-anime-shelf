@@ -191,7 +191,7 @@ export function createKitsuService(api = createApiClient(), { artwork, seasonGro
     async function load({ background = false } = {}) {
       if (groupedCatalog && !definition.subtype) {
         const index = await seasonGroups.index();
-        if (index?.byMember.size) return groupedCatalog(id, params, skip, index, genre, { background });
+        if (index?.byMember.size) return groupedCatalog(id, params, skip, index, genre, { background, browse: !query });
       }
 
       // Kitsu's Typesense search currently repeats the first page for offset=20.
@@ -215,15 +215,11 @@ export function createKitsuService(api = createApiClient(), { artwork, seasonGro
     }
 
     // Search and later pages retain their live cursor behavior. Only fixed
-    // first pages use stale-while-revalidate caching.
-    // Grouped pages must share a single cursor; mixing a stale first-page
-    // cache with a fresh Kitsu ranking changes the meaning of skip.
-    if (groupedCatalog && !definition.subtype || query || skip !== 0) return load();
-    const result = await catalogCache.read(id, load);
-    // An isolated background refresh must not change the pagination order for
-    // the cached first page just delivered to a client.
-
-    return result;
+    // first pages use stale-while-revalidate caching. For grouped catalogs the
+    // cached first page and the browse cursor for later pages are replaced
+    // together (see createGroupedCatalog), so skip keeps one meaning.
+    if (query || skip !== 0) return load();
+    return catalogCache.read(id, load);
   }
 
   async function singleMetadata(id, { enrichArtwork = true } = {}) {

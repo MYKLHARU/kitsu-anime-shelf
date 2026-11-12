@@ -59,9 +59,31 @@ export function createSeasonGroups({ loadMappings = createAnimeMappingLoader() }
 
 // skip counts unique shows, not the original Kitsu season entries. A small
 // per-query cursor retains the canonical order across pages and concurrent calls.
+//
+// Fixed browse catalogs keep their cursor as long as their first page may be
+// served from the stale-while-revalidate cache (24 hours), so later pages always
+// continue the ranking of the first page a client received. A background
+// refresh builds a separate cursor and installs it only once it has produced a
+// complete first page, at the same moment that page replaces the cached one.
+// Searches keep short-lived live cursors in their own smaller pool.
+// A first page is only loaded here when the cache has no usable copy, so it
+// reuses a cursor only while that cursor is fresh; later pages may continue an
+// older cursor. The extra hour covers the time between a cursor's creation and
+// its first page being cached.
+const LIVE_CURSOR_MS = 900000;
+const BROWSE_CURSOR_MS = 25 * 3600000;
+
 export function createGroupedCatalog({ api, preview, now = Date.now }) {
-  const cursors = new Map();
+  const searchCursors = new Map();
+  const browseCursors = new Map();
   const previews = new Map();
+
+  function install(key, state, browse) {
+    const cursors = browse ? browseCursors : searchCursors;
+    cursors.delete(key);
+    cursors.set(key, state);
+    while (cursors.size > (browse ? 64 : 16)) cursors.delete(cursors.keys().next().value);
+  }
 
   function remember(item, included) {
     const meta = preview(item, included);
@@ -76,18 +98,14 @@ export function createGroupedCatalog({ api, preview, now = Date.now }) {
     return entry && now() - entry.saved < 900000 ? entry.meta : undefined;
   }
 
-  const catalog = async function (id, params, skip, index, genre, { background = false } = {}) {
+  const catalog = async function (id, params, skip, index, genre, { background = false, browse = false } = {}) {
     const key = JSON.stringify([id, params]);
-    let state = background ? undefined : cursors.get(key);
-    if (!state || now() - state.saved >= 900000) {
+    let state = background ? undefined : (browse ? browseCursors : searchCursors).get(key);
+    if (!state || now() - state.saved >= (browse && skip > 0 ? BROWSE_CURSOR_MS : LIVE_CURSOR_MS)) {
       state = { ids: [], seen: new Set(), genres: new Map(), nextPage: 1, ended: false,
         totalPages: Infinity, index, saved: now(), pending: Promise.resolve() };
     }
-    if (!background) {
-      cursors.delete(key);
-      cursors.set(key, state);
-      while (cursors.size > 16) cursors.delete(cursors.keys().next().value);
-    }
+    if (!background) install(key, state, browse);
     const operation = state.pending.then(async () => {
       if (skip > state.ids.length + 500 || skip + RESULT_SIZE > 10000) {
         throw Object.assign(new Error('This catalog position has expired. Reopen the catalog and browse from the start.'), { status: 400 });
@@ -138,6 +156,9 @@ export function createGroupedCatalog({ api, preview, now = Date.now }) {
       return { metas };
     });
     state.pending = operation.catch(() => {});
+    // The caller (the catalog cache) stores this result synchronously after it
+    // resolves, so the new cursor and the new first page take over together.
+    if (background) return operation.then(result => { install(key, state, browse); return result; });
     return operation;
   };
 

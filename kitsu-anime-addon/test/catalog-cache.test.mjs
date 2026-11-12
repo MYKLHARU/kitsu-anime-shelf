@@ -124,10 +124,15 @@ test('catalog queries are lightweight while filtering, title artwork and detail 
   await assert.rejects(service.catalog('kitsu-category-action', { skip: 'invalid' }), { status: 400 });
 });
 
-test('grouped pagination retains its order until the cursor expires, then restarts with current rankings', async () => {
+test('grouped first pages use the stale cache, and later pages follow the first page the client received', async () => {
   let clock = 0;
   let ids = Array.from({ length: 300 }, (_, i) => i + 1);
-  const service = createKitsuService({ request: async (path, params) => {
+  let gate;
+  let requests = 0;
+  const service = createKitsuService({ request: async (path, params, _ttl, options = {}) => {
+    requests += 1;
+    if (gate && options.priority === -2) await gate.promise;
+    if (params['filter[id]']) return { data: params['filter[id]'].split(',').map(id => ({ id, attributes: { canonicalTitle: `Anime ${id}` } })) };
     const start = (params['page[number]'] - 1) * 20;
     return { data: ids.slice(start, start + 20).map(id => ({ id: String(id), attributes: { canonicalTitle: `Anime ${id}` } })),
       meta: { count: ids.length }, links: { next: start + 20 < ids.length ? 'next' : null } };
@@ -136,16 +141,31 @@ test('grouped pagination retains its order until the cursor expires, then restar
     { kitsu_id: 301, type: 'TV', themoviedb_id: { tv: 1 }, season: { tmdb: 2 } }
   ] }) });
   const first = await service.catalog('kitsu-popular');
+  assert.equal(first.metas[0].id, 'kitsu:1');
+
+  // Fresh for 15 minutes: no upstream work, and page 2 continues the same order.
   ids = [...ids.slice(100, 200), ...ids.slice(0, 100), ...ids.slice(200)];
   clock = 899000;
-  const retained = await service.catalog('kitsu-popular');
-  assert.deepEqual(retained, first);
+  const before = requests;
+  assert.deepEqual(await service.catalog('kitsu-popular'), first);
+  assert.equal(requests, before, 'A fresh grouped first page is served from the cache');
   const second = await service.catalog('kitsu-popular', { skip: 100 });
-  const oldIds = new Set(retained.metas.map(meta => meta.id));
+  const oldIds = new Set(first.metas.map(meta => meta.id));
   assert.equal(second.metas.length, 100);
   assert.ok(second.metas.every(meta => !oldIds.has(meta.id)));
   assert.equal(second.metas[0].id, 'kitsu:201');
+
+  // Stale: the old page returns immediately while a refresh is held upstream,
+  // and a client paging on from that old page still gets the matching page 2.
   clock = 901000;
+  gate = deferred();
+  assert.deepEqual(await service.catalog('kitsu-popular'), first, 'Stale grouped pages must not wait for Kitsu');
+  const during = await service.catalog('kitsu-popular', { skip: 100 });
+  assert.deepEqual(during.metas.map(meta => meta.id), second.metas.map(meta => meta.id));
+
+  // Once the refresh completes, the new first page and its cursor take over together.
+  gate.resolve();
+  for (let i = 0; i < 20; i += 1) await setImmediate();
   const updated = await service.catalog('kitsu-popular');
   assert.equal(updated.metas[0].id, 'kitsu:101');
   const next = await service.catalog('kitsu-popular', { skip: 100 });
@@ -153,6 +173,32 @@ test('grouped pagination retains its order until the cursor expires, then restar
   assert.equal(next.metas[0].id, 'kitsu:1');
   const newIds = new Set(updated.metas.map(meta => meta.id));
   assert.ok(next.metas.every(meta => !newIds.has(meta.id)));
+});
+
+test('a failed grouped refresh keeps both the cached first page and its cursor', async () => {
+  let clock = 0;
+  let ids = Array.from({ length: 300 }, (_, i) => i + 1);
+  let failBackground = false;
+  const service = createKitsuService({ request: async (path, params, _ttl, options = {}) => {
+    if (failBackground && options.priority === -2) throw new Error('Kitsu is slow');
+    if (params['filter[id]']) return { data: params['filter[id]'].split(',').map(id => ({ id, attributes: {} })) };
+    const start = (params['page[number]'] - 1) * 20;
+    return { data: ids.slice(start, start + 20).map(id => ({ id: String(id), attributes: {} })),
+      meta: { count: ids.length }, links: { next: start + 20 < ids.length ? 'next' : null } };
+  } }, { now: () => clock, seasonGroups: createSeasonGroups({ loadMappings: async () => [
+    { kitsu_id: 1, type: 'TV', themoviedb_id: { tv: 1 }, season: { tmdb: 1 } },
+    { kitsu_id: 301, type: 'TV', themoviedb_id: { tv: 1 }, season: { tmdb: 2 } }
+  ] }) });
+  const first = await service.catalog('kitsu-category-action');
+  ids = [...ids.slice(100, 200), ...ids.slice(0, 100), ...ids.slice(200)];
+  failBackground = true;
+  clock = 20 * 3600000;
+  assert.deepEqual(await service.catalog('kitsu-category-action'), first);
+  for (let i = 0; i < 20; i += 1) await setImmediate();
+  const second = await service.catalog('kitsu-category-action', { skip: 100 });
+  const firstIds = new Set(first.metas.map(meta => meta.id));
+  assert.ok(second.metas.every(meta => !firstIds.has(meta.id)), 'Page 2 still follows the cached page 1');
+  assert.equal(second.metas[0].id, 'kitsu:201');
 });
 
 test('title details and catalog completion run ahead of queued first-page and background work', async () => {
