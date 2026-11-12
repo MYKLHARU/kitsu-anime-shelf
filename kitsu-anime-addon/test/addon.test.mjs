@@ -116,6 +116,24 @@ test('unknown episode counts use actual numbers and omit unknown dates', async (
   assert.equal(meta.videos[0].released, undefined);
 });
 
+test('airing series with more episodes than the detail page limit list every episode', async () => {
+  const requested = [];
+  const service = createKitsuService({ request: async (path, params) => {
+    if (!path.endsWith('/episodes')) return { data: anime(12, { episodeCount: null, status: 'current' }) };
+    const offset = params['page[offset]'];
+    requested.push(offset);
+    return { data: Array.from({ length: 20 }, (_, index) => ({ attributes: { number: offset + index + 1, canonicalTitle: `Title ${offset + index + 1}` } })),
+      meta: { count: 1410 } };
+  } });
+  const { meta } = await service.metadata('kitsu:12');
+  assert.equal(requested.length, 10);
+  assert.equal(meta.videos.length, 1410);
+  assert.equal(meta.videos[199].title, 'Title 200');
+  assert.equal(meta.videos[200].id, 'kitsu:12:201');
+  assert.equal(meta.videos[200].title, 'Episode 201');
+  assert.equal(meta.videos.at(-1).id, 'kitsu:12:1410');
+});
+
 test('known-count metadata remains playable during an episode endpoint outage', async () => {
   const service = createKitsuService({ request: async path => {
     if (path.endsWith('/episodes')) throw new ApiError('Temporary outage.');

@@ -237,11 +237,13 @@ export function createKitsuService(api = createApiClient(), { artwork, seasonGro
     const enriched = enrichArtwork ? artwork?.enrich(meta, data.data) : undefined;
     const path = `anime/${animeId}/episodes`;
     let episodePages = [];
+    let listedCount = 0;
     try {
       const first = await api.request(path, { 'page[limit]': API_PAGE_SIZE, 'page[offset]': 0, sort: 'number' }, 3600);
       episodePages.push(first);
       const count = Number(first.meta?.count);
       if (!Number.isSafeInteger(count) || count < 0 || count > MAX_EPISODES) throw new ApiError('Invalid Kitsu episode count.');
+      listedCount = count;
       const offsets = Array.from({ length: Math.min(MAX_EPISODE_DETAIL_PAGES - 1, Math.max(0, Math.ceil(count / API_PAGE_SIZE) - 1)) }, (_, i) => (i + 1) * API_PAGE_SIZE);
       // Retain completed pages if individual episode detail requests fail.
       const rest = await Promise.allSettled(offsets.map(offset => api.request(path, {
@@ -261,6 +263,14 @@ export function createKitsuService(api = createApiClient(), { artwork, seasonGro
     const declaredCount = Number.isSafeInteger(a.episodeCount) && a.episodeCount > 0 ? Math.min(a.episodeCount, MAX_EPISODES) : 0;
     // When the count is unknown, show only episode numbers actually known to Kitsu.
     const numbers = new Set([...Array.from({ length: declaredCount }, (_, index) => index + 1), ...actual.keys()]);
+    // Airing series (e.g. One Piece) have no declared count, and only the first
+    // MAX_EPISODE_DETAIL_PAGES of details are fetched. List the episodes beyond
+    // that limit after the highest known number so the full run stays playable.
+    const unfetched = listedCount - MAX_EPISODE_DETAIL_PAGES * API_PAGE_SIZE;
+    if (unfetched > 0) {
+      const highest = Math.max(0, ...numbers);
+      for (let number = highest + 1; number <= Math.min(highest + unfetched, MAX_EPISODES); number += 1) numbers.add(number);
+    }
     if (!numbers.size && a.subtype?.toLowerCase() === 'movie') numbers.add(1);
     meta.videos = [...numbers].sort((a, b) => a - b).map(number => episodeVideo(animeId, number, actual.get(number)));
     if (meta.videos.length === 1) meta.behaviorHints = { defaultVideoId: meta.videos[0].id };
