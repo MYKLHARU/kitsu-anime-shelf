@@ -1,6 +1,6 @@
 {
   "name": "kitsu-anime-shelf",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "private": true,
   "type": "module",
   "description": "A personal Stremio anime catalog powered by Kitsu.app",

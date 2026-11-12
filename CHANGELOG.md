@@ -1,5 +1,13 @@
 # Release notes
 
+## 1.4.3 — 12 November 2026
+
+- Serve grouped category rows from the first-page cache again. Since 1.4.1 every category except Anime Movies waited for Kitsu once its 15-minute cursor expired; in a simulated slow-Kitsu test, loading all 44 homepage rows took about 29 seconds every 15 minutes. Stale rows now return immediately while they refresh in the background.
+- Keep paging consistent with the cache. Each fixed catalog's browsing cursor lives as long as its cached first page, and a background refresh installs its new cursor at the same moment its new first page replaces the cached one. A client paging on from an older first page gets matching later pages, and a failed refresh keeps both.
+- Give search its own pool of short-lived cursors so searches no longer evict category cursors.
+
+The addon manifest and npm package are version 1.4.3.
+
 ## 1.4.2 — 12 November 2026
 
 - List every episode of long-running airing series. Titles without a declared episode count (for example One Piece, with 1,410 episodes on Kitsu) previously stopped at episode 200. Episodes beyond the ten-page detail limit appear as "Episode N" with their correct Kitsu IDs.

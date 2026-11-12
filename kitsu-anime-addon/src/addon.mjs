@@ -7,7 +7,7 @@ import { createSeasonGroups } from './season-groups.mjs';
 
 export const manifest = {
   id: 'personal.kitsu.anime.shelf',
-  version: '1.4.2',
+  version: '1.4.3',
   name: 'Kitsu Anime Shelf',
   logo: 'https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/logo.png',
   description: 'Anime discovery from Kitsu.app with grouped TV seasons, 40 main category catalogs, popular, top rated, currently airing, films, and search.',
