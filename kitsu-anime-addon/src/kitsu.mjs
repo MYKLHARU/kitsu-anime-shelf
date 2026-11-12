@@ -7,6 +7,7 @@ const API_BASE = 'https://kitsu.app/api/edge/';
 const API_PAGE_SIZE = 20;
 const CATALOG_PAGE_SIZE = 100;
 const MAX_EPISODES = 20000;
+const MAX_EPISODE_DETAIL_PAGES = 10; // Bound upstream work per metadata request.
 const CATALOG_FIELDS = 'canonicalTitle,titles,subtype,posterImage,coverImage,synopsis,description,startDate,endDate,status,episodeLength,slug,youtubeVideoId';
 
 export class ApiError extends Error {
@@ -49,6 +50,13 @@ export function createApiClient({ fetchImpl = fetch, now = Date.now, timeoutMs =
   const cache = new Map();
   const pending = new Map();
   const run = limiter(3);
+  let cooldownUntil = 0;
+
+  function retryDelay(header) {
+    const seconds = header && /^\d+(?:\.\d+)?$/.test(header.trim()) ? Number(header) * 1000 : NaN;
+    const date = header && !Number.isFinite(seconds) ? Date.parse(header) : NaN;
+    return Math.min(60000, Math.max(500, Number.isFinite(seconds) ? seconds : Number.isFinite(date) ? date - Date.now() : 1000));
+  }
 
   async function request(path, params = {}, ttl = 900, { priority = path === 'anime' ? 0 : 2 } = {}) {
     const url = new URL(path, API_BASE);
@@ -64,6 +72,7 @@ export function createApiClient({ fetchImpl = fetch, now = Date.now, timeoutMs =
     const operation = run(async () => {
       try {
         for (let attempt = 0; attempt < 2; attempt += 1) {
+          if (cooldownUntil > Date.now()) await delay(cooldownUntil - Date.now());
           const response = await fetchImpl(url, {
             headers: {
               Accept: 'application/vnd.api+json',
@@ -73,8 +82,9 @@ export function createApiClient({ fetchImpl = fetch, now = Date.now, timeoutMs =
           });
           if ((response.status === 429 || response.status >= 500) && attempt === 0) {
             await response.body?.cancel();
-            const retrySeconds = Number(response.headers.get('retry-after'));
-            await delay(Math.min(4000, Math.max(500, (retrySeconds || 1) * 1000)));
+            const wait = retryDelay(response.headers.get('retry-after'));
+            if (response.status === 429) cooldownUntil = Math.max(cooldownUntil, Date.now() + wait);
+            await delay(wait);
             continue;
           }
           if (!response.ok) throw new ApiError(`Kitsu returned HTTP ${response.status}.`, response.status === 404 ? 404 : 502);
@@ -206,11 +216,13 @@ export function createKitsuService(api = createApiClient(), { artwork, seasonGro
 
     // Search and later pages retain their live cursor behavior. Only fixed
     // first pages use stale-while-revalidate caching.
-    if (query || skip !== 0) return load();
+    // Grouped pages must share a single cursor; mixing a stale first-page
+    // cache with a fresh Kitsu ranking changes the meaning of skip.
+    if (groupedCatalog && !definition.subtype || query || skip !== 0) return load();
     const result = await catalogCache.read(id, load);
     // An isolated background refresh must not change the pagination order for
     // the cached first page just delivered to a client.
-    groupedCatalog?.seed(id, params, result.metas);
+
     return result;
   }
 
@@ -230,18 +242,14 @@ export function createKitsuService(api = createApiClient(), { artwork, seasonGro
       episodePages.push(first);
       const count = Number(first.meta?.count);
       if (!Number.isSafeInteger(count) || count < 0 || count > MAX_EPISODES) throw new ApiError('Invalid Kitsu episode count.');
-      const offsets = Array.from({ length: Math.max(0, Math.ceil(count / API_PAGE_SIZE) - 1) }, (_, i) => (i + 1) * API_PAGE_SIZE);
+      const offsets = Array.from({ length: Math.min(MAX_EPISODE_DETAIL_PAGES - 1, Math.max(0, Math.ceil(count / API_PAGE_SIZE) - 1)) }, (_, i) => (i + 1) * API_PAGE_SIZE);
       // Retain completed pages if individual episode detail requests fail.
       const rest = await Promise.allSettled(offsets.map(offset => api.request(path, {
         'page[limit]': API_PAGE_SIZE, 'page[offset]': offset, sort: 'number'
       }, 3600)));
-      if (rest.some(result => result.status === 'rejected') && !Number.isSafeInteger(a.episodeCount)) {
-        throw new ApiError('Kitsu episode details are temporarily unavailable. Try again.');
-      }
       episodePages.push(...rest.filter(result => result.status === 'fulfilled').map(result => result.value));
     } catch {
-      // Known episode counts still permit playback using numbered entries.
-      if (!Number.isSafeInteger(a.episodeCount) || a.episodeCount < 1) throw new ApiError('Kitsu episode details are temporarily unavailable. Try again.');
+      // Return available anime metadata even when episode details fail.
     }
     const actual = new Map();
     for (const page of episodePages) {

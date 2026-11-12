@@ -4,6 +4,12 @@ Service: [kitsu-anime-addon](https://app.northflank.com/t/toshiharus-team/projec
 
 Public URL: `https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run`
 
+## Reliability release (1.4.1)
+
+Merge the reviewed 1.4.1 PR into `main` to trigger the existing CI/CD deployment. Keep the same service and runtime settings. Confirm `/manifest.json` reports `1.4.1`, then run the existing season, artwork and hero checks below. The setup website now includes the release notes; the GitHub Pages project website uses this same hosted API.
+
+Grouped catalogs now share one 15-minute cursor instead of mixing it with the separate stale first-page cache. Users should reopen catalogs from page one after cursor expiry or a server restart. Episode-detail lookups are bounded, and recent anime mappings are persisted to a best-effort cache. Optionally set `ANIME_MAPPING_CACHE_PATH` to a writable persistent file path to retain mappings across redeployments; no new secret is required.
+
 ## Hero-background update (1.4.0)
 
 Deploy the reviewed 1.4.0 change through this same service. Keep the existing TMDB credentials, public URL, build settings and hosting plan; no new account or image storage is needed. This release uses wide HD TMDB backdrops with larger Kitsu covers as the fallback. Background bytes go directly from the image provider to Stremio, so Northflank serves only a small redirect for catalog background requests.
@@ -83,7 +89,7 @@ The new release adds `sharp`, so a rebuild that installs dependencies is require
 
 ## 4. Verify and refresh Stremio
 
-1. Open [`/manifest.json`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/manifest.json) and confirm version `1.4.0`.
+1. Open [`/manifest.json`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/manifest.json) and confirm version `1.4.1`.
 2. Open [`/health`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/health) and confirm `titleLogos: true`. This means configured, not that TMDB has accepted the credential.
 3. Open [`/meta/series/kitsu:1.json`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/meta/series/kitsu:1.json): Cowboy Bebop should keep its 26 episode videos and, when TMDB has a suitable PNG, include a `logo` URL on `image.tmdb.org`. Its `poster` should use your `/artwork/v1/poster/` route.
 4. In a checked-out addon directory run `npm ci`, `npm test`, then `npm run test:artwork -- https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run`. The final check tests real TV/film logo PNGs, JPEG size/dimensions, episodes and ETag/304 behavior. It reports failures if credentials are rejected or all sample logos fall back. Run `npm run test:live` for the broader Kitsu checks.

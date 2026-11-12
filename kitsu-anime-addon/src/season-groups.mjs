@@ -62,7 +62,6 @@ export function createSeasonGroups({ loadMappings = createAnimeMappingLoader() }
 export function createGroupedCatalog({ api, preview, now = Date.now }) {
   const cursors = new Map();
   const previews = new Map();
-  const seeds = new Map();
 
   function remember(item, included) {
     const meta = preview(item, included);
@@ -81,8 +80,7 @@ export function createGroupedCatalog({ api, preview, now = Date.now }) {
     const key = JSON.stringify([id, params]);
     let state = background ? undefined : cursors.get(key);
     if (!state || now() - state.saved >= 900000) {
-      const seed = background ? [] : seeds.get(key) || [];
-      state = { ids: [...seed], seen: new Set(seed), genres: new Map(), nextPage: 1, ended: false,
+      state = { ids: [], seen: new Set(), genres: new Map(), nextPage: 1, ended: false,
         totalPages: Infinity, index, saved: now(), pending: Promise.resolve() };
     }
     if (!background) {
@@ -143,15 +141,6 @@ export function createGroupedCatalog({ api, preview, now = Date.now }) {
     return operation;
   };
 
-  catalog.seed = (id, params, metas) => {
-    const key = JSON.stringify([id, params]);
-    const ids = metas.map(meta => meta.id.replace(/^kitsu:/, ''));
-    const state = cursors.get(key);
-    if (state && ids.some((id, index) => state.ids[index] !== id)) cursors.delete(key);
-    seeds.delete(key);
-    seeds.set(key, ids);
-    while (seeds.size > 64) seeds.delete(seeds.keys().next().value);
-  };
   return catalog;
 }
 

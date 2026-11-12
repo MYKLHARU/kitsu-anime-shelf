@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en" data-addon-origin="https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12151b">
+  <title>Kitsu Anime Shelf · Stremio add-on</title>
+  <meta name="description" content="Discover anime in Stremio with 40 Kitsu categories, grouped TV seasons, title artwork, and the latest Kitsu Anime Shelf release.">
+  <link rel="icon" href="./logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./app.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header class="topbar"><a class="brand" href="./"><img src="./logo.svg" alt="" width="36" height="36">Kitsu Anime Shelf</a><span class="tag">STREMIO ADD-ON · v1.4.1</span></header>
+    <section class="hero" aria-labelledby="heading">
+      <div class="eyebrow"><span></span>POWERED BY KITSU.APP</div>
+      <h1 id="heading">Your next anime.<br><em>On your shelf.</em></h1>
+      <p class="intro">Forty anime categories. Forty main catalogs. Bring Action, Isekai, Romance, and the rest of your shelf straight into Stremio.</p>
+      <div class="actions"><a id="install" class="button primary" href="#">Install in Stremio <span aria-hidden="true">↗</span></a><button id="copy" class="button secondary" type="button">Copy manifest URL</button></div>
+      <p id="copy-status" class="copy-status" role="status" aria-live="polite">Browse anime freely. Title artwork is shown when available.</p>
+      <details class="install-help"><summary>Installing manually or on another device?</summary><p>In Stremio, open Add-ons, paste the manifest URL below into the add-on URL field, and install.</p><p id="hosting-note">This local address works on this computer while the add-on is running. A phone or TV needs an accessible HTTPS deployment.</p><input id="manifest-url" aria-label="Manifest URL" readonly><p>This add-on provides catalogs and episode metadata. Playback uses a separate stream add-on that supports Kitsu IDs.</p></details>
+    </section>
+    <section class="release" aria-labelledby="release-heading">
+      <div class="eyebrow">NEW IN v1.4.1</div>
+      <h2 id="release-heading">A steadier shelf.</h2>
+      <p>Grouped shows keep their browsing order within a session. Known episode counts remain available when episode details cannot load, and saved anime mappings help during provider outages.</p>
+      <a class="source" href="https://github.com/MYKLHARU/kitsu-anime-shelf/releases/latest" target="_blank" rel="noopener noreferrer">Read the release notes ↗</a>
+    </section>
+    <section class="browse" aria-labelledby="browse-heading">
+      <div class="section-heading"><div><div class="eyebrow">A LOOK INSIDE</div><h2 id="browse-heading">Find your kind of story.</h2></div><a class="source" href="https://kitsu.app/explore/anime" target="_blank" rel="noopener noreferrer">Explore Kitsu ↗</a></div>
+      <nav id="main-catalogs" class="main-catalogs" aria-label="Main anime catalogs"></nav>
+      <form id="browse-form" class="filters">
+        <label>Catalog<select id="catalog"></select></label>
+        <label class="search-label">Search anime<input id="search" type="search" maxlength="200" placeholder="A title you have in mind…"></label>
+        <button class="button secondary browse-button" type="submit">Browse <span aria-hidden="true">→</span></button>
+      </form>
+      <p id="results-status" class="results-status" role="status" aria-live="polite">Loading your shelf…</p>
+      <div id="cards" class="cards" aria-busy="true"></div>
+    </section>
+    <footer><p>Made for your anime discoveries. <a href="https://github.com/MYKLHARU/kitsu-anime-shelf" target="_blank" rel="noopener noreferrer">Source on GitHub</a></p><p>Catalog data and artwork: <a href="https://kitsu.app" target="_blank" rel="noopener noreferrer">Kitsu.app</a> · Independent, unofficial add-on</p></footer>
+    <section class="credits" aria-label="Artwork credits">
+      <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer"><img src="./tmdb.svg" alt="The Movie Database (TMDB)" width="100" height="13"></a>
+      <p>Title logos and additional artwork, when available, are provided by TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+      <p>Anime ID mappings: <a href="https://github.com/Fribb/anime-lists" target="_blank" rel="noopener noreferrer">Fribb/anime-lists</a> and its upstream contributors. Artwork belongs to its respective owners.</p>
+    </section>
+  </main>
+</body>
+</html>

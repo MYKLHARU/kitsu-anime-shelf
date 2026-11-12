@@ -4,11 +4,13 @@ on:
     paths:
       - 'kitsu-anime-addon/**'
       - '.github/workflows/test.yml'
+      - 'docs/**'
   push:
     branches: [main]
     paths:
       - 'kitsu-anime-addon/**'
       - '.github/workflows/test.yml'
+      - 'docs/**'
 permissions:
   contents: read
 jobs:
@@ -27,3 +29,5 @@ jobs:
           cache-dependency-path: kitsu-anime-addon/package-lock.json
       - run: npm ci
       - run: npm test
+      - run: npm run build:pages
+      - run: git diff --exit-code -- ../docs

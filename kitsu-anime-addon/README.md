@@ -2,6 +2,8 @@
 
 A Stremio anime catalog add-on using **https://kitsu.app** directly. Browsing needs no account or Kitsu API key. Optional title logos use a free TMDB API key or Read Access Token; image composition uses the `sharp` package.
 
+Current release: **1.4.1**. See [release notes](../CHANGELOG.md) and the [project website](https://myklharu.github.io/kitsu-anime-shelf/).
+
 ## Start and install on this computer
 
 1. Install [Node.js](https://nodejs.org/) version 22 or newer if needed.
@@ -40,7 +42,7 @@ The add-on serves catalogs and metadata. Playback comes from a separate stream a
 - Episode IDs: `kitsu:1:1`
 - Metadata type: `series`, including single-episode anime films.
 - Kitsu entries use local/absolute episode numbers within each Kitsu entry. Reliably mapped TV seasons are now presented under one main show; see below.
-- Known episodes include Kitsu titles, summaries, dates and thumbnails when available. Missing details fall back to numbered entries. Unknown-count shows use only actual episode numbers from Kitsu.
+- At most ten pages (200 episode-detail records) are fetched per metadata request. Known episodes include Kitsu titles, summaries, dates and thumbnails when available. Missing details fall back to numbered entries. Unknown-count shows use only actual episode numbers from Kitsu.
 
 ## Grouped TV seasons
 
@@ -51,16 +53,16 @@ Version 1.3.0 groups TV anime when the mapping source supplies an explicit, unam
 - The first-season Kitsu ID, name and artwork become the main catalog card. Selecting a later season in search leads to that same card. Details collect episodes, release years and genres across the mapped seasons; title-logo lookup runs only for the main card.
 - Existing saved individual-season cards retain their original metadata and numbering. Open the main show from a freshly loaded Kitsu catalog/search to see the grouped version, then add that card to your library if desired. No saved library records are changed automatically.
 - Catalog pagination counts unique shows and fetches more upstream pages to fill a page after merging duplicates. Sixteen query cursors last 15 minutes and are limited to 10,000 show positions. Deep uncached jumps over 500 positions ask the client to reopen the catalog instead of scanning thousands of upstream pages. Main-show cards missing from the raw result are loaded in batches of 20.
-- Grouping and artwork share one daily mapping download. A recent mapping index can be reused for up to seven days during a source outage; without one, original individual entries remain usable. Known episode counts supply numbered episodes during episode-detail outages. If an entire required season cannot be fetched, grouped details return a retryable error rather than quietly omitting that season.
+- Grouping and artwork share one daily mapping download. A recent mapping index can be reused for up to seven days during a source outage, including across restarts when the best-effort local cache survives. Set `ANIME_MAPPING_CACHE_PATH` to a writable persistent path if required; the default system temporary directory may reset on deployment. Without a recent index, original individual entries remain usable. Known episode counts supply numbered episodes during episode-detail outages. If an entire required season cannot be fetched, grouped details return a retryable error rather than quietly omitting that season.
 - Grouping is on by default. For rollback set `GROUP_ANIME_SEASONS=false` and restart/redeploy; leave the existing TMDB settings unchanged.
 
 ## Category loading speed
 
-Version 1.3.1 keeps a complete first-page cache for the 44 fixed browse catalogs. Pages are fresh for 15 minutes; after that, the previous complete page can be served for up to 24 hours while it refreshes in the background. Only one catalog refresh runs at a time, and failed refreshes wait a minute before retrying. The cache holds at most 64 pages and resets when the process restarts. A first uncached visit still depends on Kitsu's response time.
+For catalogs using native pagination, including Anime Movies, the add-on keeps a complete first-page cache for fixed browse results. Pages are fresh for 15 minutes; after that, the previous complete page can be served for up to 24 hours while it refreshes in the background. Only one catalog refresh runs at a time, and failed refreshes wait a minute before retrying. The cache holds at most 64 pages and resets when the process restarts. A first uncached visit still depends on Kitsu's response time.
 
 Catalog requests select only the title/artwork fields needed by cards. They no longer expand the category relationships for every title. Category filtering still happens at Kitsu; filtered cards retain the selected genre label, while complete genre lists are fetched on the details page. All 100 catalog slots and season grouping remain intact. Detail/episode requests and catalog-completion work take priority over queued first-row and background work, with the same maximum of three concurrent Kitsu requests.
 
-Search and later pages retain live cursor behavior. Background refreshes use isolated cursors; pagination is seeded from the first page actually returned, preventing a ranking refresh from replacing that page's order mid-browse. Existing metadata, poster caching and episode IDs are unchanged.
+Version 1.4.1 bypasses that separate first-page cache for grouped catalogs. Their first and later pages share one in-memory cursor for 15 minutes, avoiding a mixture of stale first-page results and a new browsing order. Once the cursor expires or the server restarts, reopen from page one; rankings may have changed. Search and later pages also retain live cursor behavior.
 
 ## Run elsewhere
 
