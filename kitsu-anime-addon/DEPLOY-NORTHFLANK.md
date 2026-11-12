@@ -4,6 +4,10 @@ Service: [kitsu-anime-addon](https://app.northflank.com/t/toshiharus-team/projec
 
 Public URL: `https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run`
 
+## Episode-list fix (1.4.2)
+
+Pushing to `main` triggers the existing CI/CD deployment; no runtime settings change. Confirm `/manifest.json` reports `1.4.2` and that [`/meta/series/kitsu:12.json`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/meta/series/kitsu:12.json) (One Piece) lists more than 200 episode videos.
+
 ## Reliability release (1.4.1)
 
 Merge the reviewed 1.4.1 PR into `main` to trigger the existing CI/CD deployment. Keep the same service and runtime settings. Confirm `/manifest.json` reports `1.4.1`, then run the existing season, artwork and hero checks below. The setup website now includes the release notes; the GitHub Pages project website uses this same hosted API.
@@ -89,7 +93,7 @@ The new release adds `sharp`, so a rebuild that installs dependencies is require
 
 ## 4. Verify and refresh Stremio
 
-1. Open [`/manifest.json`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/manifest.json) and confirm version `1.4.1`.
+1. Open [`/manifest.json`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/manifest.json) and confirm version `1.4.2`.
 2. Open [`/health`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/health) and confirm `titleLogos: true`. This means configured, not that TMDB has accepted the credential.
 3. Open [`/meta/series/kitsu:1.json`](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/meta/series/kitsu:1.json): Cowboy Bebop should keep its 26 episode videos and, when TMDB has a suitable PNG, include a `logo` URL on `image.tmdb.org`. Its `poster` should use your `/artwork/v1/poster/` route.
 4. In a checked-out addon directory run `npm ci`, `npm test`, then `npm run test:artwork -- https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run`. The final check tests real TV/film logo PNGs, JPEG size/dimensions, episodes and ETag/304 behavior. It reports failures if credentials are rejected or all sample logos fall back. Run `npm run test:live` for the broader Kitsu checks.

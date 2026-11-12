@@ -2,7 +2,7 @@
 
 Discover anime in Stremio with 40 Kitsu category catalogs, grouped TV seasons, title logos, and HD backgrounds.
 
-**Current release: [v1.4.1](https://github.com/MYKLHARU/kitsu-anime-shelf/releases/latest).**
+**Current release: [v1.4.2](https://github.com/MYKLHARU/kitsu-anime-shelf/releases/latest).**
 
 - [Project website](https://myklharu.github.io/kitsu-anime-shelf/)
 - [Open the hosted add-on](https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/)

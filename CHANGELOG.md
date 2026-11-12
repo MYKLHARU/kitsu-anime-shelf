@@ -1,5 +1,13 @@
 # Release notes
 
+## 1.4.2 — 12 November 2026
+
+- List every episode of long-running airing series. Titles without a declared episode count (for example One Piece, with 1,410 episodes on Kitsu) previously stopped at episode 200. Episodes beyond the ten-page detail limit appear as "Episode N" with their correct Kitsu IDs.
+- Fix a startup race in which an older saved anime-mapping file could replace a fresh download. Mapping files dated in the future are no longer treated as fresh.
+- Tests use a private mapping cache instead of the shared system temp file, so repeated local test runs pass.
+
+The addon manifest and npm package are version 1.4.2.
+
 ## 1.4.1 — 12 November 2026
 
 - Keep grouped catalog pages on one in-memory browsing cursor. Cursors expire after 15 minutes; reopen from page one after expiry or a server restart.

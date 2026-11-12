@@ -2,7 +2,7 @@
 
 A Stremio anime catalog add-on using **https://kitsu.app** directly. Browsing needs no account or Kitsu API key. Optional title logos use a free TMDB API key or Read Access Token; image composition uses the `sharp` package.
 
-Current release: **1.4.1**. See [release notes](../CHANGELOG.md) and the [project website](https://myklharu.github.io/kitsu-anime-shelf/).
+Current release: **1.4.2**. See [release notes](../CHANGELOG.md) and the [project website](https://myklharu.github.io/kitsu-anime-shelf/).
 
 ## Start and install on this computer
 
