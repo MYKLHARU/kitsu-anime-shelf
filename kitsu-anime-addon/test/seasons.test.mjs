@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import './isolated-mapping-cache.mjs';
 import { createAnimeMappingLoader } from '../src/anime-mappings.mjs';
 import { buildSeasonIndex, createSeasonGroups } from '../src/season-groups.mjs';
 import { createKitsuService, ApiError } from '../src/kitsu.mjs';

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import './isolated-mapping-cache.mjs';
 import { chooseBackdrop, createArtworkService } from '../src/artwork.mjs';
 import { toMeta } from '../src/kitsu.mjs';
 import { createAddonServer } from '../src/addon.mjs';

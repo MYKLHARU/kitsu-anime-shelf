@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGroupedCatalog } from '../src/season-groups.mjs';
 import { createAnimeMappingLoader } from '../src/anime-mappings.mjs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -32,5 +32,28 @@ test('mapping loader restores a validated cached mapping after upstream failure'
     assert.equal((await original()).length, 1);
     const restored = createAnimeMappingLoader({ cachePath, fetchImpl: async () => { throw Error('offline'); } });
     assert.equal((await restored())[0].kitsu_id, 12);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('concurrent first loads share one disk restore and ignore future-dated or stale cache files', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'kitsu-test-'));
+  try {
+    const cachePath = join(dir, 'mapping.json');
+    const clock = 10 * 86400000;
+    // An older copy (two days old): usable during outages, but due a refresh.
+    await writeFile(cachePath, JSON.stringify({ saved: clock - 2 * 86400000, rows: [{ kitsu_id: 1 }] }));
+    let calls = 0;
+    const load = createAnimeMappingLoader({ cachePath, now: () => clock, fetchImpl: async () => {
+      calls += 1;
+      return new Response(JSON.stringify([{ kitsu_id: 2 }]));
+    } });
+    const [a, b] = await Promise.all([load(), load()]);
+    assert.equal(a, b);
+    assert.equal(a[0].kitsu_id, 2);
+    assert.equal(calls, 1);
+
+    await writeFile(cachePath, JSON.stringify({ saved: clock + 86400000, rows: [{ kitsu_id: 3 }] }));
+    const future = createAnimeMappingLoader({ cachePath, now: () => clock, fetchImpl: async () => new Response(JSON.stringify([{ kitsu_id: 4 }])) });
+    assert.equal((await future())[0].kitsu_id, 4);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

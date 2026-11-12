@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import './isolated-mapping-cache.mjs';
 import sharp from 'sharp';
 import { setTimeout as delay } from 'node:timers/promises';
 import { setImmediate } from 'node:timers/promises';

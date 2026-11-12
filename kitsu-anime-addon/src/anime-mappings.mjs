@@ -11,14 +11,19 @@ export function createAnimeMappingLoader({ fetchImpl = fetch, now = Date.now, ca
   let saved = 0;
   let retry = 0;
   let pending;
-  let hydrated = false;
-  async function restore() {
-    if (hydrated) return;
-    hydrated = true;
+  let restoring;
+  // Every caller waits for the same disk read, so a concurrent first call
+  // cannot start a download that the disk copy later overwrites.
+  function restore() {
+    restoring ??= readStored();
+    return restoring;
+  }
+  async function readStored() {
     try {
       const stored = JSON.parse(await readFile(cachePath, 'utf8'));
-      if (Array.isArray(stored.rows) && stored.rows.length <= 100000 &&
-          Number.isFinite(stored.saved) && now() - stored.saved < 7 * DAY &&
+      // A timestamp from the future is not trusted as fresh.
+      if (!rows && Array.isArray(stored.rows) && stored.rows.length <= 100000 &&
+          Number.isFinite(stored.saved) && stored.saved <= now() && now() - stored.saved < 7 * DAY &&
           stored.rows.every(row => Number.isSafeInteger(row.kitsu_id) && row.kitsu_id > 0)) {
         rows = stored.rows; saved = stored.saved;
       }
