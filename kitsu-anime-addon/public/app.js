@@ -1,8 +1,11 @@
 const $ = selector => document.querySelector(selector);
-const manifestUrl = `${location.origin}/manifest.json`;
-$('#install').href = `stremio://${location.host}/manifest.json`;
+const addonOrigin = document.documentElement.dataset.addonOrigin || location.origin;
+const addonUrl = new URL(addonOrigin);
+const manifestUrl = new URL('/manifest.json', addonUrl).href;
+const fallbackPoster = new URL('./logo.svg', document.baseURI).href;
+$('#install').href = `stremio://${addonUrl.host}/manifest.json`;
 $('#manifest-url').value = manifestUrl;
-if (location.protocol === 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) {
+if (addonUrl.protocol === 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(addonUrl.hostname)) {
   $('#hosting-note').textContent = 'This hosted add-on can be installed on other devices using the same manifest URL. Share the URL below to let other people install it.';
 }
 $('#copy').addEventListener('click', async () => {
@@ -39,7 +42,7 @@ async function browse() {
   cards.setAttribute('aria-busy', 'true');
   $('#results-status').textContent = 'Finding anime on Kitsu…';
   try {
-    const response = await fetch(path, { signal: controller.signal });
+    const response = await fetch(new URL(path, addonUrl), { signal: controller.signal });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Could not load the catalog.');
     if (current !== generation) return;
@@ -54,8 +57,8 @@ async function browse() {
       poster.className = 'poster';
       poster.alt = meta.name;
       poster.loading = 'lazy';
-      poster.src = meta.poster || '/logo.svg';
-      poster.addEventListener('error', () => { if (!poster.src.endsWith('/logo.svg')) poster.src = '/logo.svg'; }, { once: true });
+      poster.src = meta.poster || fallbackPoster;
+      poster.addEventListener('error', () => { if (poster.src !== fallbackPoster) poster.src = fallbackPoster; }, { once: true });
       const name = document.createElement('h3');
       name.textContent = meta.name;
       name.title = meta.name;
@@ -86,7 +89,7 @@ $('#search').addEventListener('input', updateCatalogButtons);
 
 async function init() {
   try {
-    const response = await fetch('/manifest.json');
+    const response = await fetch(new URL('/manifest.json', addonUrl));
     if (!response.ok) throw new Error('Manifest unavailable. Refresh to try again.');
     const manifest = await response.json();
     const catalogs = manifest.catalogs.filter(catalog => !catalog.extra.some(extra => extra.name === 'search' && extra.isRequired));

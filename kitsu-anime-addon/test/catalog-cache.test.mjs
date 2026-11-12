@@ -124,7 +124,7 @@ test('catalog queries are lightweight while filtering, title artwork and detail 
   await assert.rejects(service.catalog('kitsu-category-action', { skip: 'invalid' }), { status: 400 });
 });
 
-test('background ranking refreshes preserve pagination for the first page actually delivered', async () => {
+test('grouped pagination retains its order until the cursor expires, then restarts with current rankings', async () => {
   let clock = 0;
   let ids = Array.from({ length: 300 }, (_, i) => i + 1);
   const service = createKitsuService({ request: async (path, params) => {
@@ -137,17 +137,20 @@ test('background ranking refreshes preserve pagination for the first page actual
   ] }) });
   const first = await service.catalog('kitsu-popular');
   ids = [...ids.slice(100, 200), ...ids.slice(0, 100), ...ids.slice(200)];
-  clock = 901000;
-  const stale = await service.catalog('kitsu-popular');
-  assert.deepEqual(stale, first);
-  await setImmediate();
+  clock = 899000;
+  const retained = await service.catalog('kitsu-popular');
+  assert.deepEqual(retained, first);
   const second = await service.catalog('kitsu-popular', { skip: 100 });
-  const oldIds = new Set(stale.metas.map(meta => meta.id));
+  const oldIds = new Set(retained.metas.map(meta => meta.id));
+  assert.equal(second.metas.length, 100);
   assert.ok(second.metas.every(meta => !oldIds.has(meta.id)));
-  assert.equal(second.metas[0].id, 'kitsu:101');
+  assert.equal(second.metas[0].id, 'kitsu:201');
+  clock = 901000;
   const updated = await service.catalog('kitsu-popular');
   assert.equal(updated.metas[0].id, 'kitsu:101');
   const next = await service.catalog('kitsu-popular', { skip: 100 });
+  assert.equal(next.metas.length, 100);
+  assert.equal(next.metas[0].id, 'kitsu:1');
   const newIds = new Set(updated.metas.map(meta => meta.id));
   assert.ok(next.metas.every(meta => !newIds.has(meta.id)));
 });

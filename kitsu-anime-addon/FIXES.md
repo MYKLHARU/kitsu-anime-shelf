@@ -7,4 +7,4 @@
 - The `/health` endpoint accepts an explicitly declared `service.capabilities.artwork` for injected services; without that declaration it reports only known local artwork support.
 - Anime mappings are saved atomically to a local best-effort cache and can be restored for up to seven days after a source outage. Override the location with `ANIME_MAPPING_CACHE_PATH` for persistent storage on hosts where the system temp directory is ephemeral. Cache persistence failures do not prevent operation.
 
-Run `npm ci && npm test` inside `kitsu-anime-addon`. The offline review environment could not install the `sharp` dependency, so the full test suite could not be executed here. New dependency-free regression tests can be run with `node --test test/reliability-fixes.test.mjs`.
+Run `npm ci && npm test` inside `kitsu-anime-addon`. The grouped-pagination regression test covers ranking changes within the 15-minute cursor lifetime and a fresh browsing order after expiry. Dependency-free regression tests can also be run with `node --test test/reliability-fixes.test.mjs`.
