@@ -39,12 +39,12 @@ const assets = new Map([
   ['/tmdb.svg', ['tmdb.svg', 'image/svg+xml']]
 ]);
 
-function json(response, status, value, cache = 0) {
+function json(response, status, value, cache = 0, head = false) {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': cache ? `public, max-age=${cache}, stale-if-error=3600` : 'no-store'
   });
-  response.end(JSON.stringify(value));
+  response.end(head ? undefined : JSON.stringify(value));
 }
 
 function parseExtra(raw, url) {
@@ -67,6 +67,7 @@ export function createAddonServer({ service, artwork, logger = console,
   publicUrl = process.env.PUBLIC_URL || '', token = process.env.TMDB_READ_ACCESS_TOKEN || '', apiKey = process.env.TMDB_API_KEY || '',
   groupSeasons = process.env.GROUP_ANIME_SEASONS !== 'false' } = {}) {
   const groupingEnabled = !service && groupSeasons;
+  const artworkCapability = artwork?.enabled;
   if (!service) {
     const api = createApiClient();
     const loadMappings = createAnimeMappingLoader();
@@ -81,6 +82,8 @@ export function createAddonServer({ service, artwork, logger = console,
     service = createKitsuService(api, { artwork, seasonGroups });
   }
   return http.createServer(async (request, response) => {
+    // All JSON responses (including errors) honor HEAD.
+    const sendJson = (status, value, cache = 0) => json(response, status, value, cache, request.method === 'HEAD');
     response.setHeader('Access-Control-Allow-Origin', '*');
     response.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
     response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
@@ -89,7 +92,7 @@ export function createAddonServer({ service, artwork, logger = console,
     if (request.method === 'OPTIONS') { response.writeHead(204); response.end(); return; }
     if (!['GET', 'HEAD'].includes(request.method)) {
       response.setHeader('Allow', 'GET, HEAD, OPTIONS');
-      json(response, 405, { error: 'Method not allowed.' });
+      sendJson(405, { error: 'Method not allowed.' });
       return;
     }
     try {
@@ -99,12 +102,12 @@ export function createAddonServer({ service, artwork, logger = console,
         const [file, contentType] = assets.get(url.pathname);
         const contents = await readFile(new URL(`../public/${file}`, import.meta.url));
         response.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-cache' });
-        response.end(contents);
+        response.end(request.method === 'HEAD' ? undefined : contents);
         return;
       }
-      if (url.pathname === '/health') { json(response, 200, { status: 'ok', name: manifest.name,
-        titleLogos: Boolean(artwork?.enabled), seasonGrouping: groupingEnabled }); return; }
-      if (url.pathname === '/manifest.json') { json(response, 200, manifest, 300); return; }
+      if (url.pathname === '/health') { sendJson(200, { status: 'ok', name: manifest.name,
+        titleLogos: Boolean(artwork?.enabled ?? service?.capabilities?.artwork ?? artworkCapability), seasonGrouping: groupingEnabled }); return; }
+      if (url.pathname === '/manifest.json') { sendJson(200, manifest, 300); return; }
       const background = /^\/artwork\/v1\/background\/kitsu:([1-9]\d{0,9})\.jpg$/.exec(url.pathname);
       if (background && artwork?.background) {
         const result = await artwork.background(background[1]);
@@ -136,19 +139,19 @@ export function createAddonServer({ service, artwork, logger = console,
       const catalog = /^\/catalog\/(?:series|anime)\/([^/]+?)(?:\/([^/]+))?\.json$/.exec(url.pathname);
       if (catalog) {
         const result = await service.catalog(decodeURIComponent(catalog[1]), parseExtra(catalog[2], url));
-        json(response, 200, result, 900);
+        sendJson(200, result, 900);
         return;
       }
       const meta = /^\/meta\/series\/([^/]+)\.json$/.exec(url.pathname);
       if (meta) {
-        json(response, 200, await service.metadata(decodeURIComponent(meta[1])), 3600);
+        sendJson(200, await service.metadata(decodeURIComponent(meta[1])), 3600);
         return;
       }
-      json(response, 404, { error: 'Resource not found.' });
+      sendJson(404, { error: 'Resource not found.' });
     } catch (error) {
       const status = error instanceof URIError ? 400 : error.status || 500;
       if (status >= 500) logger.error(`${new Date().toISOString()} ${error.message}`);
-      json(response, status, { error: status === 500 ? 'An unexpected error occurred.' : error.message });
+      sendJson(status, { error: status === 500 ? 'An unexpected error occurred.' : error.message });
     }
   });
 }
