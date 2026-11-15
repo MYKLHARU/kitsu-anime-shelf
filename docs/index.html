@@ -12,19 +12,30 @@
 </head>
 <body>
   <main>
-    <header class="topbar"><a class="brand" href="./"><img src="./logo.svg" alt="" width="36" height="36">Kitsu Anime Shelf</a><span class="top-links"><a id="dashboard-link" class="tag dashboard-link" href="./dashboard" hidden>MY SHELF →</a><span class="tag">STREMIO ADD-ON · v1.4.3</span></span></header>
+    <header class="topbar"><a class="brand" href="./"><img src="./logo.svg" alt="" width="36" height="36">Kitsu Anime Shelf</a><span class="top-links"><a id="dashboard-link" class="tag dashboard-link" href="./dashboard" hidden>MY SHELF →</a><span class="tag">STREMIO ADD-ON · v2.0</span></span></header>
     <section class="hero" aria-labelledby="heading">
       <div class="eyebrow"><span></span>POWERED BY KITSU.APP</div>
       <h1 id="heading">Your next anime.<br><em>On your shelf.</em></h1>
-      <p class="intro">Forty anime categories. Forty main catalogs. Bring Action, Isekai, Romance, and the rest of your shelf straight into Stremio.</p>
-      <div class="actions"><a id="install" class="button primary" href="#">Install in Stremio <span aria-hidden="true">↗</span></a><button id="copy" class="button secondary" type="button">Copy manifest URL</button></div>
-      <p id="copy-status" class="copy-status" role="status" aria-live="polite">Browse anime freely. Title artwork is shown when available.</p>
-      <details class="install-help"><summary>Installing manually or on another device?</summary><p>In Stremio, open Add-ons, paste the manifest URL below into the add-on URL field, and install.</p><p id="hosting-note">This local address works on this computer while the add-on is running. A phone or TV needs an accessible HTTPS deployment.</p><input id="manifest-url" aria-label="Manifest URL" readonly><p>This add-on provides catalogs and episode metadata. Playback uses a separate stream add-on that supports Kitsu IDs.</p></details>
+      <p class="intro">Your rows, your way. Pick the Top 10, the most popular, top rated, airing and films, plus any of 40 genres, and bring exactly those into Stremio.</p>
+      <div class="actions"><a class="button primary" href="#choose">Choose your rows <span aria-hidden="true">↓</span></a></div>
+    </section>
+    <section id="choose" class="choose" aria-labelledby="choose-heading">
+      <div class="eyebrow">STEP 1</div>
+      <h2 id="choose-heading">Choose your rows.</h2>
+      <p class="choose-intro">Nothing appears in Stremio until you choose. Already installed? Choose here and install again to update your rows.</p>
+      <h3 class="choose-title">Lists</h3>
+      <div id="choose-lists" class="choose-chips" role="group" aria-label="Lists"></div>
+      <h3 class="choose-title">Genres <span class="choose-tools"><button id="choose-all" class="text-button" type="button">Select all</button><button id="choose-none" class="text-button" type="button">Clear all</button></span></h3>
+      <div id="choose-genres" class="choose-chips" role="group" aria-label="Genres"></div>
+      <div class="eyebrow step2">STEP 2</div>
+      <div class="actions"><a id="install" class="button primary" href="#" aria-disabled="true">Install in Stremio <span aria-hidden="true">↗</span></a><button id="copy" class="button secondary" type="button">Copy manifest URL</button></div>
+      <p id="copy-status" class="copy-status" role="status" aria-live="polite">Choose at least one list or genre.</p>
+      <details class="install-help"><summary>Installing manually or on another device?</summary><p>In Stremio, open Add-ons, paste the manifest URL below into the add-on URL field, and install. Your choices are part of the URL.</p><p id="hosting-note">This local address works on this computer while the add-on is running. A phone or TV needs an accessible HTTPS deployment.</p><input id="manifest-url" aria-label="Manifest URL" readonly><p>This add-on provides catalogs and episode metadata. Playback uses a separate stream add-on that supports Kitsu IDs. Search is always included.</p></details>
     </section>
     <section class="release" aria-labelledby="release-heading">
-      <div class="eyebrow">NEW IN v1.4.3</div>
-      <h2 id="release-heading">Rows that keep up.</h2>
-      <p>Category rows now open straight away, even when Kitsu is slow, and refresh quietly in the background. Long-running series such as One Piece list every episode.</p>
+      <div class="eyebrow">NEW IN v2.0</div>
+      <h2 id="release-heading">Only the rows you want.</h2>
+      <p>Stremio now shows nothing from this add-on until you choose: a Top 10 of what's airing, the most popular, top rated, films, and any of 40 genres. Installed before? Choose your rows above and install again.</p>
       <a class="source" href="https://github.com/MYKLHARU/kitsu-anime-shelf/releases/latest" target="_blank" rel="noopener noreferrer">Read the release notes ↗</a>
     </section>
     <section class="browse" aria-labelledby="browse-heading">

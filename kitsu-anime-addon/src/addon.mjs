@@ -4,32 +4,44 @@ import { ApiError, CATALOGS, createApiClient, createKitsuService } from './kitsu
 import { createArtworkService } from './artwork.mjs';
 import { createAnimeMappingLoader } from './anime-mappings.mjs';
 import { createSeasonGroups } from './season-groups.mjs';
+import { CATALOG_OPTIONS, SEARCH_CATALOG_ID, encodeConfig, manifestCatalog, parseConfig, parseExtra as parseCatalogExtra } from './catalog-config.mjs';
 
 export const VERSION = '2.0.0-rc.1';
 
-export const manifest = {
+const BASE_MANIFEST = {
   id: 'personal.kitsu.anime.shelf',
   version: VERSION,
   name: 'Kitsu Anime Shelf',
   logo: 'https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/logo.png',
-  description: 'Anime discovery from Kitsu.app with grouped TV seasons, 40 main category catalogs, popular, top rated, currently airing, films, and search.',
   types: ['series'],
   resources: [
     { name: 'catalog', types: ['series'] },
     { name: 'meta', types: ['series'], idPrefixes: ['kitsu:'] }
   ],
-  idPrefixes: ['kitsu:'],
-  catalogs: Object.entries(CATALOGS).map(([id, definition]) => ({
-    id,
-    type: 'series',
-    name: definition.name,
-    extra: [
-      ...(definition.searchOnly ? [{ name: 'search', isRequired: true }] : []),
-      { name: 'skip' }
-    ]
-  })),
-  behaviorHints: { adult: false, p2p: false }
+  idPrefixes: ['kitsu:']
 };
+
+// A configured install shows exactly the chosen lists and genres, plus search
+// (which never appears as a row). Every install keeps the same add-on ID.
+export function buildManifest(catalogIds) {
+  const names = CATALOG_OPTIONS.filter(option => catalogIds.includes(option.id)).map(option => option.name);
+  return {
+    ...BASE_MANIFEST,
+    description: `Anime from Kitsu.app with grouped TV seasons and search. Your rows: ${names.join(', ')}.`,
+    catalogs: [...catalogIds, SEARCH_CATALOG_ID].map(manifestCatalog),
+    behaviorHints: { adult: false, p2p: false, configurable: true }
+  };
+}
+
+// The plain manifest shows no rows until the user chooses them on /configure.
+export const manifest = {
+  ...BASE_MANIFEST,
+  description: 'Anime discovery from Kitsu.app: choose your own rows from Top 10, popular, top rated, airing, films and 40 genres. Open Configure to choose.',
+  catalogs: [manifestCatalog(SEARCH_CATALOG_ID)],
+  behaviorHints: { adult: false, p2p: false, configurable: true, configurationRequired: true }
+};
+
+export { encodeConfig, parseConfig };
 
 const assets = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
@@ -54,21 +66,7 @@ function json(response, status, value, cache = 0, head = false) {
   response.end(head ? undefined : JSON.stringify(value));
 }
 
-function parseExtra(raw, url) {
-  const extra = {};
-  if (raw) {
-    // Split before decoding so an encoded '&' stays inside a search value.
-    for (const part of raw.split('&')) {
-      const separator = part.indexOf('=');
-      if (separator < 0) throw new ApiError('Invalid catalog filters.', 400);
-      const key = decodeURIComponent(part.slice(0, separator));
-      if (!['search', 'skip'].includes(key)) throw new ApiError('Unknown catalog filter.', 400);
-      extra[key] = decodeURIComponent(part.slice(separator + 1));
-    }
-  }
-  for (const key of ['search', 'skip']) if (url.searchParams.has(key)) extra[key] = url.searchParams.get(key);
-  return extra;
-}
+const parseExtra = (raw, url) => parseCatalogExtra(raw, url, ApiError);
 
 // v2: optional factory from src/v2.mjs that adds accounts, the dashboard and
 // personal catalogs. Without it the server is the unchanged public add-on.
@@ -118,6 +116,18 @@ export function createAddonServer({ service, artwork, logger = console,
     try {
       if (request.url.length > 4096) throw new ApiError('URL is too long.', 414);
       const url = new URL(request.url, 'http://127.0.0.1');
+      // Configured installs: /c/<choices>/... behaves like /... with those rows.
+      let chosen;
+      const configured = /^\/c\/([^/]{1,1000})(\/.*)$/.exec(url.pathname);
+      if (configured) {
+        chosen = parseConfig(configured[1]);
+        if (!chosen) throw new ApiError('This install link is not valid. Choose your rows again on the setup page.', 404);
+        url.pathname = configured[2];
+      }
+      if (url.pathname === '/catalog-options.json') {
+        sendJson(200, { options: CATALOG_OPTIONS }, 3600);
+        return;
+      }
       if (assets.has(url.pathname)) {
         const [file, contentType] = assets.get(url.pathname);
         const contents = await readFile(new URL(`../public/${file}`, import.meta.url));
@@ -128,7 +138,7 @@ export function createAddonServer({ service, artwork, logger = console,
       if (url.pathname === '/health') { sendJson(200, { status: 'ok', name: manifest.name, version: VERSION,
         titleLogos: Boolean(artwork?.enabled ?? service?.capabilities?.artwork ?? artworkCapability), seasonGrouping: groupingEnabled,
         accounts: Boolean(extension?.capabilities?.accounts), anilist: Boolean(extension?.capabilities?.anilist) }); return; }
-      if (url.pathname === '/manifest.json') { sendJson(200, manifest, 300); return; }
+      if (url.pathname === '/manifest.json') { sendJson(200, chosen ? buildManifest(chosen) : manifest, 300); return; }
       const background = /^\/artwork\/v1\/background\/kitsu:([1-9]\d{0,9})\.jpg$/.exec(url.pathname);
       if (background && artwork?.background) {
         const result = await artwork.background(background[1]);
