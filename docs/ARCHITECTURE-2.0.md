@@ -1,66 +1,63 @@
-# Kitsu Anime Shelf 2.0 — incremental architecture
+# Kitsu Anime Shelf 2.0 — architecture
 
-## Existing system (audit findings)
+Status: **release candidate 2.0.0-rc.1** on `feature/2.0-foundations`. Not merged or deployed.
 
-The project is a Node.js 22+ ESM Stremio HTTP add-on. Its service entry point is `kitsu-anime-addon/server.mjs`, which calls `createAddonServer` from `src/addon.mjs`. The service already implements Kitsu catalogs, grouped-season metadata, image fallbacks, caching and provider throttling. The public GitHub Pages site is built from `kitsu-anime-addon/public/` into `docs/`. The package has a Node built-in test runner and currently depends on Sharp.
+2.0 adds personal shelves on top of the unchanged public Stremio add-on: accounts, a PostgreSQL watchlist with progress tracking, AniList sync, recommendations, a dashboard, and personal Stremio catalogs. All of it is **off unless `ACCOUNTS_ENABLED=true`** and the configuration is complete. If 2.0 cannot start safely (missing settings, database unreachable, pending migrations), the service logs why and runs as the 1.x public add-on.
 
-**Keep the existing Stremio resource handlers and Kitsu episode/video IDs intact.** Changing IDs could break installed stream add-ons and saved library entries.
+## Compatibility guarantees
 
-## First foundation
+- The public manifest keeps its ID (`personal.kitsu.anime.shelf`), catalogs, `kitsu:` ID prefix and episode video IDs (`kitsu:<id>:<n>`). Only `version` changes.
+- Public routes (`/manifest.json`, `/catalog/…`, `/meta/…`, artwork, `/health`, the setup site) are handled by the same code as 1.4.3. The 2.0 application only receives `/api/v2/*`, `/u/*` and `/dashboard*`.
+- Personal catalogs are a **separate** add-on (`personal.kitsu.anime.shelf.mine`) at `/u/<install-token>/manifest.json`. Its metadata responses come from the same Kitsu service, so playback through Kitsu-compatible stream add-ons works identically. The end-to-end test asserts that personal and public metadata are byte-for-byte equal.
+- `/health` gains `version`, `accounts` and `anilist` fields; existing fields are unchanged.
 
-`src/library-model.mjs` introduces a small, pure, independently testable model for library entries and namespaced anime identifiers. No database, accounts, API routes, secrets or deployment changes are introduced. It is intentionally not wired into the public HTTP server.
+## Components (`kitsu-anime-addon/src/`)
 
-Run `cd kitsu-anime-addon && npm test` to exercise the new tests alongside the existing suite.
+| Module | Responsibility |
+| --- | --- |
+| `pg-client.mjs` | Dependency-free PostgreSQL client: TLS (libpq `sslmode`), SCRAM-SHA-256, parameterised extended-protocol queries, pool, transactions. Exposes the `pg`-compatible `query(text, values)`, so the `pg` package can replace it later. |
+| `migrate.mjs`, `scripts/migrate.mjs` | Ordered, checksummed migrations, each in its own transaction under an advisory lock. `npm run migrate`, `npm run migrate -- --status`. |
+| `security.mjs` | scrypt password hashing, AES-256-GCM token encryption, random tokens, cookies, client IP behind proxies, rate limiter. |
+| `account-store.mjs` | Users, sessions, install tokens, OAuth state, provider connections, audit log, export, deletion, retention clean-up. |
+| `anime-store.mjs` | Canonical anime records, created only for Kitsu IDs that Kitsu confirms; cached title, poster, categories and episode count. One-to-one Kitsu↔AniList index from the Fribb mappings. |
+| `library-model.mjs`, `library-store.mjs`, `postgres-library-adapter.mjs` | Library domain model and storage. Atomic partial updates, optimistic concurrency (`revision`, `If-Match`), list and delete. |
+| `library-api.mjs` | `/api/v2/library` HTTP handler (list, get, patch, delete). |
+| `anilist.mjs`, `anilist-sync.mjs` | AniList OAuth and GraphQL client; two-way sync (see [ANILIST-SYNC.md](ANILIST-SYNC.md)). |
+| `recommendations.mjs` | Category-affinity recommendations from Kitsu data. |
+| `personal-addon.mjs` | Personal Stremio add-on behind revocable install tokens. |
+| `v2-app.mjs` | Router: auth, account, library, AniList, recommendations, install links, dashboard assets, security headers, CSRF and rate limits. |
+| `v2.mjs` | Reads configuration, checks the schema and assembles everything. |
+| `public/dashboard.*` | Responsive dashboard (no framework, no inline script, strict CSP). |
 
-## Proposed next increments
+## Data model (migrations `001`, `002`)
 
-1. Add an internal anime identity table with unique `(provider, external_id)` constraints. Keep the existing Kitsu ID as the Stremio-facing ID until mappings are verified.
-2. Add PostgreSQL migrations for `users`, `anime`, `anime_external_ids`, `library_entries`, `watch_events`, `provider_connections` and `sync_jobs`. Scope all user data by authenticated user ID.
-3. Add authenticated library endpoints and manual progress updates with idempotency keys and audit timestamps. Avoid claiming playback events are available in all Stremio clients.
-4. Add AniList OAuth with encrypted tokens, background sync, explicit conflict handling, and retry/rate-limit policies.
-5. Add recommendation ranking and user-specific catalogs behind feature flags. Keep anonymous catalogs fully operational.
+`shelf_users` (email, scrypt hash) → `shelf_sessions` (SHA-256 of session token), `shelf_install_tokens` (SHA-256 of install token), `shelf_provider_connections` (encrypted AniList token, sync state), `shelf_oauth_states`, `shelf_library_entries` (status, progress, score, revision), `shelf_watch_events` (reserved), `shelf_audit_log` (90-day retention). `shelf_anime` and `shelf_anime_external_ids` hold canonical anime and provider IDs (`kitsu` verified; `anilist` derived from one-to-one mappings only). Deleting a user cascades to all of their data.
 
-## Design constraints
+## API summary
 
-- Never expose account OAuth tokens or database credentials in manifests or browser bundles.
-- Use revocable installation tokens for personalized Stremio manifests; avoid long-lived account tokens in URLs.
-- Provide export and deletion controls for user data.
-- Preserve current public catalog behavior while new features are gated.
-- Treat provider mappings as evidence-based and ambiguous season mappings as unresolved.
-- Run the existing tests and live integration checks before merging or deploying.
+All responses are JSON with `Cache-Control: no-store`. Non-GET requests must send `Origin: <PUBLIC_URL>` and `Content-Type: application/json` (when there is a body).
 
-## Audit scope
+| Method and path | Purpose |
+| --- | --- |
+| `GET /api/v2/config` | Feature availability. |
+| `POST /api/v2/auth/register`, `/login`, `/logout` | Session lifecycle. |
+| `GET/PATCH /api/v2/me` | Profile. |
+| `POST /api/v2/me/password`, `GET /api/v2/me/sessions`, `POST /api/v2/me/sessions/revoke-others` | Credentials and devices. |
+| `GET /api/v2/me/export`, `POST /api/v2/me/delete` | Data export and deletion. |
+| `GET /api/v2/library[?status=]`, `GET/PATCH/DELETE /api/v2/library/kitsu:<id>` | Watchlist and progress. `PATCH` accepts `status`, `progress`, `score` and an optional `If-Match: "<revision>"`. |
+| `GET /api/v2/recommendations` | Personalised suggestions. |
+| `GET/POST /api/v2/stremio/tokens`, `DELETE /api/v2/stremio/tokens/:id` | Personal add-on install links (shown once). |
+| `POST /api/v2/anilist/connect`, `GET /api/v2/anilist/callback`, `GET /api/v2/anilist/status`, `POST /api/v2/anilist/sync`, `PATCH /api/v2/anilist/settings`, `DELETE /api/v2/anilist` | AniList. |
+| `GET /u/<token>/manifest.json`, `/u/<token>/catalog/series/<id>.json`, `/u/<token>/meta/series/<id>.json` | Personal Stremio add-on. |
 
-This initial audit is based on the repository README, package manifest, service entry point, and existing documented behavior. It is not a complete line-by-line security or performance audit. No live API, database, or deployment tests were performed as part of this first change.
+## Known limitations
 
+- **No email verification or password reset.** There is no mail service, so a forgotten password cannot be recovered; the owner can reset it in the database. Set `REGISTRATION_OPEN=false` for a private deployment.
+- **Progress from Stremio playback is not captured.** Stremio does not send playback events to catalog add-ons. Progress comes from the dashboard and AniList.
+- **In-process state.** Rate limits, recommendation caches and AniList sync jobs run in the web process. One instance is assumed; with several instances, limits apply per instance, and a sync interrupted by a restart is retried after 15 minutes.
+- **Built-in database client.** It was written because no new npm dependency could be installed in the development environment. It is tested against PostgreSQL 16 (TLS and SCRAM) in CI. Moving to the `pg` package is a drop-in change.
+- AniList matching depends on the community Fribb mappings; ambiguous or missing mappings are reported, not guessed.
 
-## Second foundation: persistence boundary
+## History
 
-- `kitsu-anime-addon/migrations/001_personal_library.sql` provides a **review-only PostgreSQL schema** for users, canonical anime, provider IDs, per-user library entries, and idempotent watch events. It is not applied automatically.
-- `src/library-store.mjs` defines an asynchronous adapter boundary and a **test-only, non-durable** in-memory adapter. The service validates user IDs and entry data, and its tests check user isolation.
-- No routes are exposed and no external database connection is created. Production authentication, authorization, transactional updates and connection pooling are still required.
-
-**Before production:** implement a PostgreSQL adapter with atomic upserts, verified session-to-user binding (never trust a user ID supplied by the client), database least-privilege roles, migration tooling and backups. The current read-then-write service is not concurrency-safe for competing progress updates; implement optimistic concurrency or a transactional upsert before accepting real users. Confirm the canonical-anime mapping policy and provide account data export/deletion.
-
-
-## Third foundation: PostgreSQL adapter
-
-`src/postgres-library-adapter.mjs` adds a dependency-injected PostgreSQL adapter using parameterized queries and an atomic upsert. It maps existing `kitsu:<id>`-style identifiers to canonical anime records via `shelf_anime_external_ids`. Unknown IDs are rejected rather than guessed. It does not open connections or enable HTTP routes. Tests use a mocked query interface.
-
-**Known limitations:** The higher-level `createLibraryService.save` still performs a read followed by a write, so two simultaneous partial updates can overwrite each other. The adapter's upsert is atomic, but the overall read-modify-write operation is not. Do not expose concurrent authenticated writes until a transactional patch API or version check is implemented. The adapter also requires pre-created user and canonical anime rows; migration, account provisioning and mapping ingestion are separate work. UUID validation is syntactic, not authentication.
-
-The environment could not clone the public repository to run tests (network DNS unavailable). Run CI and review test results before merging.
-
-
-## Fourth foundation: atomic partial library writes
-
-The library service now prefers `adapter.patch` for partial changes. The PostgreSQL adapter implements a single-statement conditional `INSERT ... ON CONFLICT DO UPDATE`, preserving fields not supplied by the caller even under competing updates to different fields. A test verifies that no preliminary read occurs on this path. The memory adapter also supports patch, but is for tests only.
-
-This is **not** a substitute for an authenticated API, event-level idempotency, or optimistic concurrency for competing writes to the same field. No live user endpoint has been enabled.
-
-
-## Fifth foundation: unmounted authenticated library handler
-
-`src/library-api.mjs` adds a small, **unmounted** HTTP handler for `GET /api/v2/library/:animeId` and `PATCH /api/v2/library/:animeId`. It requires an injected `authenticate(req)` verifier and an exact HTTPS dashboard origin, rejects unsupported methods and fields, limits JSON request size, and sends no-store responses. Tests use a mock HTTP request/response pair.
-
-**Security boundary:** This is not an authentication implementation. Do not mount it until the verifier validates a real server-side session or access token, the dashboard and deployment's CSRF model are reviewed, and request throttling and audit logging are added. User IDs must be sourced only from verified sessions. The public Stremio server is deliberately unchanged. The handler does not yet provide list, delete, or export endpoints.
+The 2.0 work began with ChatGPT's foundations (library model, schema 001, PostgreSQL adapter with atomic patch, unmounted library handler). Claude reviewed and ran them (all 80 existing tests passed), then completed the release candidate: database client and migrations, authentication, the mounted API, AniList, recommendations, personal catalogs, dashboard, CI database tests and documentation. Changes to the earlier foundations: schema 001 no longer manages its own transaction (the migration runner does); the adapter adds revisions, list and delete; the library handler adds list, delete, `If-Match`, and maps unmapped IDs to 404 instead of 500; the mapping loader keeps AniList IDs.
