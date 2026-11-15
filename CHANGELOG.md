@@ -10,6 +10,7 @@ Personal shelves, built on the unchanged public add-on. Off unless `ACCOUNTS_ENA
 - **Recommendations:** ranked from the Kitsu categories of what you watch and how you rate it, excluding titles and seasons already on your shelf.
 - **Personal Stremio rows:** Continue Watching, For You, Plan to Watch, On Hold and Completed, installed through revocable per-device links. Metadata and `kitsu:` episode IDs are identical to the public add-on, so playback is unchanged.
 - **Dashboard:** a responsive 2.0 dashboard at `/dashboard` with a strict Content Security Policy. The setup page links to it when accounts are enabled.
+- **Discover:** a numbered Top 10 of the most popular airing anime, and browsing by Most popular, Top rated, Airing now, Movies and all 40 genres, each title addable to your shelf in one tap.
 - **Database tooling:** a dependency-free PostgreSQL client (TLS, SCRAM-SHA-256), checksummed migrations (`npm run migrate`), and CI integration tests against PostgreSQL 16.
 
 The public manifest keeps its ID, catalogs and ID prefix; its version is now 2.0.0-rc.1. `/health` also reports `version`, `accounts` and `anilist`.

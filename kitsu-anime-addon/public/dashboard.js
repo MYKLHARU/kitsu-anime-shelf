@@ -9,7 +9,10 @@ const STATUSES = [
 ];
 const STATUS_LABEL = Object.fromEntries(STATUSES);
 const FALLBACK_POSTER = '/logo.svg';
-const state = { me: null, config: null, entries: [], filter: 'all', editing: null, recsLoaded: false, pollTimer: null };
+const state = { me: null, config: null, entries: [], filter: 'all', editing: null, recsLoaded: false, discoverLoaded: false, pollTimer: null,
+  browse: { id: 'kitsu-popular', metas: [], shown: 0, skip: 0, more: false, controller: null } };
+const BROWSE_STEP = 30;
+const BROWSE_LISTS = [['kitsu-popular', 'Most popular'], ['kitsu-top-rated', 'Top rated'], ['kitsu-airing', 'Airing now'], ['kitsu-movies', 'Movies']];
 
 // ---- Helpers ------------------------------------------------------------------
 
@@ -76,6 +79,7 @@ function showView(name) {
     if (link.dataset.view === name) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   }
   if (name === 'discover' && !state.recsLoaded) loadRecommendations();
+  if (name === 'discover' && !state.discoverLoaded) loadDiscover();
   if (name === 'connections') { loadTokens(); renderAnilist(); }
   if (name === 'account') loadSessions();
 }
@@ -296,7 +300,7 @@ async function removeEditing() {
 
 // ---- Discover ------------------------------------------------------------------------
 
-function discoverCard(meta) {
+function discoverCard(meta, { rank } = {}) {
   const inLibrary = state.entries.find(entry => entry.animeId === meta.id);
   const button = el('button', { class: 'button secondary small add', type: 'button', disabled: Boolean(inLibrary), text: inLibrary ? STATUS_LABEL[inLibrary.status] : 'Add to plan' });
   button.addEventListener('click', async () => {
@@ -309,7 +313,8 @@ function discoverCard(meta) {
     } catch (error) { toast(error.message, true); }
   });
   return el('article', { class: 'card' },
-    el('a', { href: `stremio:///detail/series/${encodeURIComponent(meta.id)}`, 'aria-label': `Open ${meta.name} in Stremio` }, poster(meta.poster, '')),
+    el('a', { href: `stremio:///detail/series/${encodeURIComponent(meta.id)}`, 'aria-label': `${rank ? `Number ${rank}: ` : ''}Open ${meta.name} in Stremio` }, poster(meta.poster, '')),
+    rank ? el('span', { class: 'rank', 'aria-hidden': 'true', text: rank }) : null,
     el('h3', { text: meta.name, title: meta.name }),
     el('p', { text: [meta.releaseInfo, meta.genres?.slice(0, 2).join(', ')].filter(Boolean).join(' · ') || ' ' }),
     meta.reason ? el('p', { class: 'reason', text: meta.reason }) : null,
@@ -326,7 +331,10 @@ async function loadRecommendations() {
   $('#recs-status').textContent = 'Finding anime you might like…';
   try {
     const { data } = await api('/api/v2/recommendations');
-    $('#recs').replaceChildren(...data.metas.map(discoverCard));
+    const cards = data.metas.map(meta => discoverCard(meta));
+    cards.forEach((card, index) => { card.hidden = index >= 12; });
+    $('#recs').replaceChildren(...cards);
+    $('#recs-more').hidden = cards.length <= 12;
     $('#recs-status').textContent = data.metas.length
       ? (state.entries.length ? 'Based on the categories of titles you have watched and rated.' : 'Popular on Kitsu. Add and rate titles to personalise this list.')
       : 'No recommendations right now. Try again later.';
@@ -335,6 +343,85 @@ async function loadRecommendations() {
     $('#recs').replaceChildren();
     $('#recs-status').textContent = error.message;
   }
+}
+
+// ---- Top 10 and browsing (public Kitsu catalogs, cached by the add-on) --------
+
+async function fetchCatalog(id, skip = 0, signal) {
+  const path = `/catalog/series/${encodeURIComponent(id)}${skip ? `/skip=${skip}` : ''}.json`;
+  const response = await fetch(path, { signal });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Could not load this list from Kitsu.');
+  return Array.isArray(data.metas) ? data.metas : [];
+}
+
+async function loadTop10() {
+  $('#top10').replaceChildren(...Array.from({ length: 10 }, () => el('li', { 'aria-hidden': 'true' }, el('div', { class: 'skeleton' }))));
+  try {
+    let metas = (await fetchCatalog('kitsu-airing')).slice(0, 10);
+    let label = 'The most popular anime airing now on Kitsu.';
+    if (!metas.length) { metas = (await fetchCatalog('kitsu-popular')).slice(0, 10); label = 'The most popular anime on Kitsu.'; }
+    $('#top10').replaceChildren(...metas.map((meta, index) => el('li', {}, discoverCard(meta, { rank: index + 1 }))));
+    $('#top10-status').textContent = metas.length ? label : 'Nothing to show right now. Try again later.';
+  } catch (error) {
+    state.discoverLoaded = false;
+    $('#top10').replaceChildren();
+    $('#top10-status').textContent = error.message;
+  }
+}
+
+async function loadBrowseChoices() {
+  let genres = [];
+  try {
+    const manifest = await (await fetch('/manifest.json')).json();
+    genres = manifest.catalogs.filter(catalog => catalog.id.startsWith('kitsu-category-')).map(catalog => [catalog.id, catalog.name]);
+  } catch { /* the fixed lists still work */ }
+  const choices = [...BROWSE_LISTS, ...genres];
+  $('#browse-chips').replaceChildren(...choices.map(([id, name], index) => el('button', {
+    class: `chip${index >= BROWSE_LISTS.length ? ' genre' : ''}`, type: 'button', 'data-id': id, 'aria-pressed': String(id === state.browse.id),
+    onclick: () => browse(id, name)
+  }, name)));
+}
+
+async function browse(id, name = BROWSE_LISTS.find(([key]) => key === id)?.[1] || id) {
+  const current = state.browse;
+  current.controller?.abort();
+  Object.assign(current, { id, name, metas: [], shown: 0, skip: 0, more: false, controller: new AbortController() });
+  for (const chip of document.querySelectorAll('#browse-chips .chip')) chip.setAttribute('aria-pressed', String(chip.dataset.id === id));
+  skeletons($('#browse-results'), 12);
+  $('#browse-more').hidden = true;
+  $('#browse-status').textContent = `Loading ${name}…`;
+  try {
+    await loadMoreBrowse(true);
+  } catch (error) {
+    if (error.name === 'AbortError') return;
+    $('#browse-results').replaceChildren();
+    $('#browse-status').textContent = error.message;
+  }
+}
+
+async function loadMoreBrowse(first = false) {
+  const current = state.browse;
+  if (current.shown >= current.metas.length && (first || current.more)) {
+    const page = await fetchCatalog(current.id, current.skip, current.controller.signal);
+    const seen = new Set(current.metas.map(meta => meta.id));
+    current.metas.push(...page.filter(meta => !seen.has(meta.id)));
+    current.more = page.length >= 100;
+    current.skip += page.length;
+  }
+  const next = current.metas.slice(current.shown, current.shown + BROWSE_STEP);
+  if (first) $('#browse-results').replaceChildren();
+  $('#browse-results').append(...next.map(meta => discoverCard(meta)));
+  current.shown += next.length;
+  $('#browse-more').hidden = !(current.shown < current.metas.length || current.more);
+  $('#browse-status').textContent = current.shown ? `${current.name} · showing ${current.shown}` : `Nothing in ${current.name} right now.`;
+}
+
+function loadDiscover() {
+  state.discoverLoaded = true;
+  loadTop10();
+  loadBrowseChoices();
+  browse(state.browse.id);
 }
 
 let searchController;
@@ -532,6 +619,11 @@ async function start() {
   $('#editor-form').addEventListener('submit', submitEditor);
   $('#editor-remove').addEventListener('click', removeEditing);
   $('#search-form').addEventListener('submit', search);
+  $('#recs-more').addEventListener('click', event => {
+    for (const card of document.querySelectorAll('#recs .card[hidden]')) card.hidden = false;
+    event.currentTarget.hidden = true;
+  });
+  $('#browse-more').addEventListener('click', event => busy(event.currentTarget, () => loadMoreBrowse().catch(error => toast(error.message, true))));
   $('#token-form').addEventListener('submit', createToken);
   $('#new-token-copy').addEventListener('click', async () => {
     try { await navigator.clipboard.writeText($('#new-token-url').value); toast('Copied. Paste it into Stremio’s add-on URL field.'); }
