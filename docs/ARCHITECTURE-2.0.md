@@ -57,3 +57,10 @@ The environment could not clone the public repository to run tests (network DNS 
 The library service now prefers `adapter.patch` for partial changes. The PostgreSQL adapter implements a single-statement conditional `INSERT ... ON CONFLICT DO UPDATE`, preserving fields not supplied by the caller even under competing updates to different fields. A test verifies that no preliminary read occurs on this path. The memory adapter also supports patch, but is for tests only.
 
 This is **not** a substitute for an authenticated API, event-level idempotency, or optimistic concurrency for competing writes to the same field. No live user endpoint has been enabled.
+
+
+## Fifth foundation: unmounted authenticated library handler
+
+`src/library-api.mjs` adds a small, **unmounted** HTTP handler for `GET /api/v2/library/:animeId` and `PATCH /api/v2/library/:animeId`. It requires an injected `authenticate(req)` verifier and an exact HTTPS dashboard origin, rejects unsupported methods and fields, limits JSON request size, and sends no-store responses. Tests use a mock HTTP request/response pair.
+
+**Security boundary:** This is not an authentication implementation. Do not mount it until the verifier validates a real server-side session or access token, the dashboard and deployment's CSRF model are reviewed, and request throttling and audit logging are added. User IDs must be sourced only from verified sessions. The public Stremio server is deliberately unchanged. The handler does not yet provide list, delete, or export endpoints.
