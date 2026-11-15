@@ -50,3 +50,10 @@ This initial audit is based on the repository README, package manifest, service 
 **Known limitations:** The higher-level `createLibraryService.save` still performs a read followed by a write, so two simultaneous partial updates can overwrite each other. The adapter's upsert is atomic, but the overall read-modify-write operation is not. Do not expose concurrent authenticated writes until a transactional patch API or version check is implemented. The adapter also requires pre-created user and canonical anime rows; migration, account provisioning and mapping ingestion are separate work. UUID validation is syntactic, not authentication.
 
 The environment could not clone the public repository to run tests (network DNS unavailable). Run CI and review test results before merging.
+
+
+## Fourth foundation: atomic partial library writes
+
+The library service now prefers `adapter.patch` for partial changes. The PostgreSQL adapter implements a single-statement conditional `INSERT ... ON CONFLICT DO UPDATE`, preserving fields not supplied by the caller even under competing updates to different fields. A test verifies that no preliminary read occurs on this path. The memory adapter also supports patch, but is for tests only.
+
+This is **not** a substitute for an authenticated API, event-level idempotency, or optimistic concurrency for competing writes to the same field. No live user endpoint has been enabled.
