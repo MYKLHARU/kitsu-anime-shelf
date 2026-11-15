@@ -1,5 +1,19 @@
 # Release notes
 
+## 2.0.0-rc.1 — release candidate (not yet released)
+
+Personal shelves, built on the unchanged public add-on. Off unless `ACCOUNTS_ENABLED=true`; see `kitsu-anime-addon/DEPLOY-2.0.md`.
+
+- **Accounts:** email and password sign-in with scrypt hashing, hashed server-side sessions in `__Host-` cookies, CSRF origin checks, rate limits, an audit log, device sign-out, data export and self-service account deletion. Registration can be closed with `REGISTRATION_OPEN=false`.
+- **Watchlist and progress:** status, episode progress and score per title, stored in PostgreSQL with atomic updates and conflict detection between devices. Titles are verified against Kitsu before they are added.
+- **AniList:** OAuth connection with encrypted token storage, automatic first import, two-way sync with a documented conflict policy, optional instant updates, and a list of titles that could not be matched exactly.
+- **Recommendations:** ranked from the Kitsu categories of what you watch and how you rate it, excluding titles and seasons already on your shelf.
+- **Personal Stremio rows:** Continue Watching, For You, Plan to Watch, On Hold and Completed, installed through revocable per-device links. Metadata and `kitsu:` episode IDs are identical to the public add-on, so playback is unchanged.
+- **Dashboard:** a responsive 2.0 dashboard at `/dashboard` with a strict Content Security Policy. The setup page links to it when accounts are enabled.
+- **Database tooling:** a dependency-free PostgreSQL client (TLS, SCRAM-SHA-256), checksummed migrations (`npm run migrate`), and CI integration tests against PostgreSQL 16.
+
+The public manifest keeps its ID, catalogs and ID prefix; its version is now 2.0.0-rc.1. `/health` also reports `version`, `accounts` and `anilist`.
+
 ## 1.4.3 — 12 November 2026
 
 - Serve grouped category rows from the first-page cache again. Since 1.4.1 every category except Anime Movies waited for Kitsu once its 15-minute cursor expired; in a simulated slow-Kitsu test, loading all 44 homepage rows took about 29 seconds every 15 minutes. Stale rows now return immediately while they refresh in the background.

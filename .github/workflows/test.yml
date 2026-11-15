@@ -16,7 +16,22 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: shelf
+          POSTGRES_PASSWORD: shelf-ci-password
+          POSTGRES_DB: shelf_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U shelf -d shelf_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      # Database integration and end-to-end tests must run (not skip) in CI.
+      TEST_DATABASE_URL: postgres://shelf:shelf-ci-password@localhost:5432/shelf_test?sslmode=disable
+      REQUIRE_DB_TESTS: '1'
     defaults:
       run:
         working-directory: kitsu-anime-addon
@@ -29,5 +44,9 @@ jobs:
           cache-dependency-path: kitsu-anime-addon/package-lock.json
       - run: npm ci
       - run: npm test
+      - name: Apply migrations to a clean database
+        run: npm run migrate && npm run migrate -- --status
+        env:
+          DATABASE_URL: postgres://shelf:shelf-ci-password@localhost:5432/shelf_test?sslmode=disable
       - run: npm run build:pages
       - run: git diff --exit-code -- ../docs

@@ -4,6 +4,27 @@ A Stremio anime catalog add-on using **https://kitsu.app** directly. Browsing ne
 
 Current release: **1.4.3**. See [release notes](../CHANGELOG.md) and the [project website](https://myklharu.github.io/kitsu-anime-shelf/).
 
+## 2.0 personal shelves (release candidate)
+
+Version 2.0.0-rc.1 adds optional accounts on top of the unchanged public add-on:
+
+- **Dashboard** at `/dashboard`: sign in, track status, episode progress and scores, search Kitsu and add titles, browse recommendations, manage devices and data.
+- **AniList sync**: connect with OAuth, import your list, and keep progress in sync both ways. See [ANILIST-SYNC.md](../docs/ANILIST-SYNC.md).
+- **Recommendations** based on the Kitsu categories of what you watch and how you rate it.
+- **Personal Stremio rows**: Continue Watching, For You, Plan to Watch, On Hold and Completed, installed from a revocable link alongside this add-on. Anime and episode IDs stay `kitsu:` IDs, so playback is unchanged.
+
+2.0 needs PostgreSQL 13+ and is off unless `ACCOUNTS_ENABLED=true`. To try it locally:
+
+```text
+createdb shelf
+export ACCOUNTS_ENABLED=true PUBLIC_URL=http://127.0.0.1:47861 TOKEN_ENCRYPTION_KEY=$(openssl rand -hex 32)
+export DATABASE_URL='postgres://USER:PASSWORD@localhost:5432/shelf'
+npm run migrate
+npm start            # then open http://127.0.0.1:47861/dashboard
+```
+
+All settings are listed in [.env.example](.env.example). Deployment: [DEPLOY-2.0.md](DEPLOY-2.0.md). Design and security: [ARCHITECTURE-2.0.md](../docs/ARCHITECTURE-2.0.md), [SECURITY-2.0.md](../docs/SECURITY-2.0.md).
+
 ## Start and install on this computer
 
 1. Install [Node.js](https://nodejs.org/) version 22 or newer if needed.
@@ -104,7 +125,7 @@ See [VERIFIED-HERO.md](VERIFIED-HERO.md) for sample dimensions, sizes and checks
 ## Checks and implementation
 
 ```
-npm test
+npm test                                   # add TEST_DATABASE_URL=postgres://… to include database and 2.0 end-to-end tests
 npm run test:live
 npm run test:artwork -- https://YOUR-ADDON-HOST
 npm run test:hero -- https://YOUR-ADDON-HOST
@@ -112,7 +133,7 @@ npm run test:seasons
 npm run test:seasons -- https://YOUR-ADDON-HOST
 ```
 
-The automated tests check conservative season grouping, playback IDs, old individual-season links, unique-show pagination, provider failures, artwork rendering and HTTP behavior. GitHub Actions runs these on Node.js 22/Linux. The Kitsu live check queries real categories with grouping enabled, search and episodes. The season check validates My Hero Academia's eight seasons, separate films/spin-offs, existing individual-season compatibility and two full grouped catalog pages. Without an argument it queries providers directly; with a service URL it checks the running addon. The artwork and hero live checks require TMDB credentials on the running instance. The hero check validates three real backgrounds, CDN redirects, image dimensions/size and retained episode lists.
+With `TEST_DATABASE_URL` set to a disposable PostgreSQL database, the suite also runs the database client, migration, and 2.0 end-to-end tests (real server and database; Kitsu, AniList and mappings replaced by fakes). CI runs them against PostgreSQL 16 and fails if they would be skipped. The automated tests check conservative season grouping, playback IDs, old individual-season links, unique-show pagination, provider failures, artwork rendering and HTTP behavior. GitHub Actions runs these on Node.js 22/Linux. The Kitsu live check queries real categories with grouping enabled, search and episodes. The season check validates My Hero Academia's eight seasons, separate films/spin-offs, existing individual-season compatibility and two full grouped catalog pages. Without an argument it queries providers directly; with a service URL it checks the running addon. The artwork and hero live checks require TMDB credentials on the running instance. The hero check validates three real backgrounds, CDN redirects, image dimensions/size and retained episode lists.
 
 The server implements the [Stremio add-on HTTP protocol](https://stremio.github.io/stremio-addon-sdk/protocol.html), including CORS. Kitsu requests use the public [JSON:API](https://github.com/hummingbird-me/api-docs), 20-item upstream pages, a maximum of three concurrent requests, timeouts, caching and request deduplication. Catalogs are cached for 15 minutes; metadata for one hour. Previously fetched data can be reused for up to 24 hours during a temporary upstream outage.
 
