@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12151b">
+  <meta name="referrer" content="no-referrer">
+  <title>My Shelf · Kitsu Anime Shelf</title>
+  <link rel="icon" href="/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/dashboard/app.css">
+  <script src="/dashboard/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="bar">
+    <a class="brand" href="/"><img src="/logo.svg" alt="" width="32" height="32"><span>Kitsu Anime Shelf</span></a>
+    <nav id="nav" class="nav" aria-label="Dashboard sections" hidden>
+      <a href="#library" data-view="library">Library</a>
+      <a href="#discover" data-view="discover">Discover</a>
+      <a href="#connections" data-view="connections">Connections</a>
+      <a href="#account" data-view="account">Account</a>
+    </nav>
+    <div class="who" id="who" hidden><span id="who-name"></span><button id="sign-out" class="button ghost small" type="button">Sign out</button></div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <p id="boot" class="muted center">Loading your shelf…</p>
+
+    <!-- Accounts unavailable -->
+    <section id="unavailable" class="panel narrow" hidden>
+      <h1>Personal shelves are not enabled here.</h1>
+      <p class="muted">This server is running the public add-on only. You can still <a href="/">browse and install the Kitsu catalogs</a>.</p>
+    </section>
+
+    <!-- Signed out -->
+    <section id="auth" class="auth" hidden>
+      <div class="auth-copy">
+        <div class="eyebrow"><span class="dot"></span>KITSU ANIME SHELF 2.0</div>
+        <h1>Your anime,<br><em>your shelf.</em></h1>
+        <p class="muted">Track what you are watching, sync with AniList, get recommendations that fit your taste, and bring your own rows into Stremio.</p>
+      </div>
+      <div class="panel auth-card">
+        <div class="tabs" role="tablist" aria-label="Account">
+          <button id="tab-login" role="tab" aria-selected="true" aria-controls="login-form" type="button">Sign in</button>
+          <button id="tab-register" role="tab" aria-selected="false" aria-controls="register-form" type="button">Create account</button>
+        </div>
+        <form id="login-form" class="stack" role="tabpanel" aria-labelledby="tab-login">
+          <label>Email<input name="email" type="email" autocomplete="username" required maxlength="254"></label>
+          <label>Password<input name="password" type="password" autocomplete="current-password" required maxlength="256"></label>
+          <button class="button primary" type="submit">Sign in</button>
+        </form>
+        <form id="register-form" class="stack" role="tabpanel" aria-labelledby="tab-register" hidden>
+          <label>Name <span class="muted">(optional)</span><input name="displayName" type="text" autocomplete="nickname" maxlength="60"></label>
+          <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254"></label>
+          <label>Password<input name="password" type="password" autocomplete="new-password" required minlength="10" maxlength="256" aria-describedby="password-hint"></label>
+          <p id="password-hint" class="hint">At least 10 characters. A long passphrase is best.</p>
+          <button class="button primary" type="submit">Create account</button>
+        </form>
+        <p id="auth-error" class="error" role="alert"></p>
+      </div>
+    </section>
+
+    <!-- Library -->
+    <section id="view-library" class="view" hidden aria-labelledby="library-heading">
+      <div class="heading-row">
+        <div><div class="eyebrow">MY SHELF</div><h1 id="library-heading">Library</h1></div>
+        <button class="button primary" type="button" data-goto="discover">Add anime <span aria-hidden="true">+</span></button>
+      </div>
+      <dl id="stats" class="stats"></dl>
+      <div id="continue-wrap" hidden>
+        <h2>Continue watching</h2>
+        <div id="continue" class="rail"></div>
+      </div>
+      <div class="toolbar">
+        <div id="status-filter" class="chips" role="group" aria-label="Filter by status"></div>
+        <label class="inline">Sort<select id="sort"><option value="updated">Recently updated</option><option value="title">Title</option><option value="score">Score</option><option value="progress">Progress</option></select></label>
+        <label class="inline grow">Filter<input id="filter" type="search" placeholder="Filter your shelf…" maxlength="100"></label>
+      </div>
+      <p id="library-status" class="muted" role="status" aria-live="polite"></p>
+      <div id="library" class="grid"></div>
+    </section>
+
+    <!-- Discover -->
+    <section id="view-discover" class="view" hidden aria-labelledby="discover-heading">
+      <div class="eyebrow">DISCOVER</div>
+      <h1 id="discover-heading">Find something to watch.</h1>
+      <form id="search-form" class="search">
+        <label class="grow">Search Kitsu<input id="search" type="search" maxlength="200" placeholder="Title, e.g. Frieren" required></label>
+        <button class="button secondary" type="submit">Search</button>
+      </form>
+      <div id="search-wrap" hidden>
+        <h2>Results</h2>
+        <p id="search-status" class="muted" role="status" aria-live="polite"></p>
+        <div id="search-results" class="grid"></div>
+      </div>
+      <h2>For you</h2>
+      <p id="recs-status" class="muted" role="status" aria-live="polite">Loading recommendations…</p>
+      <div id="recs" class="grid"></div>
+    </section>
+
+    <!-- Connections -->
+    <section id="view-connections" class="view" hidden aria-labelledby="connections-heading">
+      <div class="eyebrow">CONNECTIONS</div>
+      <h1 id="connections-heading">Bring your shelf everywhere.</h1>
+      <div class="columns">
+        <article class="panel" aria-labelledby="stremio-heading">
+          <h2 id="stremio-heading">Stremio</h2>
+          <p class="muted">Install your personal rows (Continue Watching, For You, Plan to Watch and more) in Stremio. Install it alongside the main Kitsu Anime Shelf add-on, which provides the discovery catalogs.</p>
+          <form id="token-form" class="search">
+            <label class="grow">Device name<input id="token-label" maxlength="60" placeholder="Living-room TV"></label>
+            <button class="button primary" type="submit">Create install link</button>
+          </form>
+          <div id="new-token" class="new-token" hidden>
+            <p><strong>Your install link is ready.</strong> It is shown only once. Anyone with it can see your shelf rows, so keep it private.</p>
+            <input id="new-token-url" readonly aria-label="Personal manifest URL">
+            <div class="actions"><a id="new-token-install" class="button primary" href="#">Install in Stremio ↗</a><button id="new-token-copy" class="button secondary" type="button">Copy URL</button></div>
+          </div>
+          <h3>Active install links</h3>
+          <ul id="tokens" class="list"></ul>
+        </article>
+        <article class="panel" aria-labelledby="anilist-heading">
+          <h2 id="anilist-heading">AniList</h2>
+          <div id="anilist"></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Account -->
+    <section id="view-account" class="view" hidden aria-labelledby="account-heading">
+      <div class="eyebrow">ACCOUNT</div>
+      <h1 id="account-heading">Account and privacy</h1>
+      <div class="columns">
+        <form id="profile-form" class="panel stack">
+          <h2>Profile</h2>
+          <p class="muted">Signed in as <strong id="account-email"></strong></p>
+          <label>Display name<input id="display-name" maxlength="60"></label>
+          <button class="button secondary" type="submit">Save</button>
+        </form>
+        <form id="password-form" class="panel stack">
+          <h2>Change password</h2>
+          <label>Current password<input name="currentPassword" type="password" autocomplete="current-password" required></label>
+          <label>New password<input name="newPassword" type="password" autocomplete="new-password" minlength="10" required></label>
+          <button class="button secondary" type="submit">Change password</button>
+          <p class="hint">Other devices are signed out when you change your password.</p>
+        </form>
+        <div class="panel stack">
+          <h2>Devices</h2>
+          <p class="muted" id="session-count"></p>
+          <button id="revoke-sessions" class="button secondary" type="button">Sign out of other devices</button>
+          <h2>Your data</h2>
+          <p class="muted">Download everything this service stores about you as JSON.</p>
+          <button id="export" class="button secondary" type="button">Download my data</button>
+        </div>
+        <form id="delete-form" class="panel stack danger-zone">
+          <h2>Delete account</h2>
+          <p class="muted">Permanently deletes your account, library, install links and AniList connection. Your AniList account itself is not affected.</p>
+          <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+          <button class="button danger" type="submit">Delete my account</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="editor" aria-labelledby="editor-title">
+    <form id="editor-form" method="dialog" class="editor">
+      <img id="editor-poster" class="editor-poster" alt="">
+      <div class="stack">
+        <h2 id="editor-title"></h2>
+        <p id="editor-meta" class="muted"></p>
+        <label>Status<select name="status">
+          <option value="planning">Plan to watch</option><option value="watching">Watching</option>
+          <option value="completed">Completed</option><option value="on_hold">On hold</option><option value="dropped">Dropped</option>
+        </select></label>
+        <div class="two">
+          <label>Episodes watched<input name="progress" type="number" min="0" step="1" inputmode="numeric" required></label>
+          <label>Score <span class="muted">(0–10)</span><input name="score" type="number" min="0" max="10" step="0.5" inputmode="decimal" placeholder="—"></label>
+        </div>
+        <a id="editor-stremio" class="source" href="#">Open in Stremio ↗</a>
+        <div class="actions">
+          <button class="button primary" type="submit" value="save">Save</button>
+          <button class="button secondary" type="submit" value="cancel" formnovalidate>Cancel</button>
+          <button id="editor-remove" class="button danger ghost" type="button">Remove</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <footer class="foot"><p>Catalog data: <a href="https://kitsu.app" target="_blank" rel="noopener noreferrer">Kitsu.app</a> · List sync: <a href="https://anilist.co" target="_blank" rel="noopener noreferrer">AniList</a> · Independent, unofficial project · <a href="https://github.com/MYKLHARU/kitsu-anime-shelf" target="_blank" rel="noopener noreferrer">Source</a></p></footer>
+</body>
+</html>

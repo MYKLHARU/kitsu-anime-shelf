@@ -5,6 +5,13 @@ const manifestUrl = new URL('/manifest.json', addonUrl).href;
 const fallbackPoster = new URL('./logo.svg', document.baseURI).href;
 $('#install').href = `stremio://${addonUrl.host}/manifest.json`;
 $('#manifest-url').value = manifestUrl;
+// Show the 2.0 dashboard link only when this server has accounts enabled.
+fetch(new URL('/health', addonUrl)).then(response => response.json()).then(health => {
+  if (!health.accounts) return;
+  const link = $('#dashboard-link');
+  link.href = new URL('/dashboard', addonUrl).href;
+  link.hidden = false;
+}).catch(() => {});
 if (addonUrl.protocol === 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(addonUrl.hostname)) {
   $('#hosting-note').textContent = 'This hosted add-on can be installed on other devices using the same manifest URL. Share the URL below to let other people install it.';
 }
