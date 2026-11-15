@@ -80,7 +80,7 @@ function showView(name) {
   }
   if (name === 'discover' && !state.recsLoaded) loadRecommendations();
   if (name === 'discover' && !state.discoverLoaded) loadDiscover();
-  if (name === 'connections') { loadTokens(); renderAnilist(); }
+  if (name === 'connections') { loadTokens(); renderAnilist(); if (!rows.loaded) loadRows(); }
   if (name === 'account') loadSessions();
 }
 
@@ -464,6 +464,37 @@ async function loadTokens() {
   } catch (error) { toast(error.message, true); }
 }
 
+// ---- Personal add-on rows ------------------------------------------------------
+
+const rows = { options: [], chosen: new Set(), loaded: false };
+function renderRows() {
+  const chip = option => el('button', { class: 'chip', type: 'button', 'aria-pressed': String(rows.chosen.has(option.id)),
+    onclick: event => {
+      if (rows.chosen.has(option.id)) rows.chosen.delete(option.id); else rows.chosen.add(option.id);
+      event.currentTarget.setAttribute('aria-pressed', String(rows.chosen.has(option.id)));
+      $('#rows-status').textContent = 'Unsaved changes.';
+    } }, option.name);
+  $('#row-lists').replaceChildren(...rows.options.filter(option => option.group === 'list').map(chip));
+  $('#row-genres').replaceChildren(...rows.options.filter(option => option.group === 'genre').map(chip));
+}
+async function loadRows() {
+  try {
+    const [optionsResponse, { data }] = await Promise.all([fetch('/catalog-options.json'), api('/api/v2/stremio/catalogs')]);
+    rows.options = (await optionsResponse.json()).options;
+    rows.chosen = new Set(data.catalogs);
+    rows.loaded = true;
+    renderRows();
+    $('#rows-status').textContent = data.catalogs.length ? `${data.catalogs.length} chosen.` : 'Only your shelf rows are shown at the moment.';
+  } catch (error) { $('#rows-status').textContent = error.message; }
+}
+async function saveRows(event) {
+  try {
+    const { data } = await busy(event.currentTarget, () => api('/api/v2/stremio/catalogs', { method: 'PUT', body: { catalogs: [...rows.chosen] } }));
+    rows.chosen = new Set(data.catalogs);
+    $('#rows-status').textContent = `Saved ${data.catalogs.length} row${data.catalogs.length === 1 ? '' : 's'}. Stremio picks up changes within a few minutes; restart Stremio to see them sooner.`;
+  } catch (error) { toast(error.message, true); }
+}
+
 async function createToken(event) {
   event.preventDefault();
   try {
@@ -625,6 +656,9 @@ async function start() {
   });
   $('#browse-more').addEventListener('click', event => busy(event.currentTarget, () => loadMoreBrowse().catch(error => toast(error.message, true))));
   $('#token-form').addEventListener('submit', createToken);
+  $('#rows-save').addEventListener('click', saveRows);
+  $('#rows-all').addEventListener('click', () => { for (const option of rows.options) if (option.group === 'genre') rows.chosen.add(option.id); renderRows(); $('#rows-status').textContent = 'Unsaved changes.'; });
+  $('#rows-none').addEventListener('click', () => { rows.chosen.clear(); renderRows(); $('#rows-status').textContent = 'Unsaved changes.'; });
   $('#new-token-copy').addEventListener('click', async () => {
     try { await navigator.clipboard.writeText($('#new-token-url').value); toast('Copied. Paste it into Stremio’s add-on URL field.'); }
     catch { $('#new-token-url').select(); toast('Select and copy the URL above.'); }

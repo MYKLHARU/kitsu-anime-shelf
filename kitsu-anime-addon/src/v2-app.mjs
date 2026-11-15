@@ -17,6 +17,7 @@ import {
   randomToken, serializeCookie, sha256, TOKEN_PATTERN, validatePassword, verifyPassword
 } from './security.mjs';
 import { SESSION_ABSOLUTE_MS } from './account-store.mjs';
+import { normalizeCatalogIds } from './catalog-config.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KITSU_ID = /^kitsu:([1-9]\d{0,9})$/;
@@ -275,6 +276,21 @@ export function createV2App({
       return [201, { ...created, manifestUrl, installUrl: manifestUrl.replace(/^https?:/, 'stremio:') }];
     },
 
+    // Lists and genres shown in the personal Stremio add-on.
+    'GET /api/v2/stremio/catalogs': async request => {
+      const current = await requireUser(request);
+      return { catalogs: await accounts.getCatalogChoices(current.user_id) };
+    },
+
+    'PUT /api/v2/stremio/catalogs': async request => {
+      const current = await requireUser(request);
+      limit(`catalogs:${current.user_id}`, 60, 3600000);
+      const body = await readJson(request);
+      const catalogs = normalizeCatalogIds(body.catalogs);
+      if (!catalogs || Object.keys(body).length !== 1) throw new HttpError(400, 'Send { "catalogs": [catalog IDs from /catalog-options.json] }.');
+      return { catalogs: await accounts.setCatalogChoices(current.user_id, catalogs) };
+    },
+
     'POST /api/v2/anilist/connect': async request => {
       const current = await requireUser(request);
       if (!anilist) throw new HttpError(404, 'AniList is not configured on this server.');
@@ -375,7 +391,7 @@ export function createV2App({
       const unsafe = !['GET', 'HEAD', 'OPTIONS'].includes(request.method);
       if (unsafe) assertSameOrigin(request);
       else if (request.headers.origin && request.headers.origin !== origin) throw new HttpError(403, 'Origin not allowed');
-      if (request.method === 'OPTIONS') { response.writeHead(204, { Allow: 'GET, POST, PATCH, DELETE' }); response.end(); return true; }
+      if (request.method === 'OPTIONS') { response.writeHead(204, { Allow: 'GET, POST, PUT, PATCH, DELETE' }); response.end(); return true; }
 
       if (path === '/api/v2/library' || path.startsWith('/api/v2/library/')) {
         const current = await session(request);

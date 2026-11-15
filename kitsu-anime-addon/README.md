@@ -41,7 +41,9 @@ The local address works on the computer running this server. It does not provide
 
 ## Included catalogs
 
-Your 40 main category catalogs appear first, in the requested order, with titles ranked by Kitsu popularity. Four general browse catalogs and one search catalog follow:
+**Since 2.0 you choose your rows.** A plain install of `/manifest.json` shows no rows and Stremio offers **Configure**. On the setup page (or Configure), pick any of the lists and genres below; your choices are encoded in the install URL, for example `/c/top10.popular.isekai/manifest.json`. Installing again with new choices replaces the previous install (the add-on ID stays the same). Search is always available. Account holders can instead choose rows in the dashboard for their personal install link.
+
+Available rows: **Top 10 Airing** (the first ten of Currently Airing), the four general lists below, and the 40 categories. Choices are shown in this order:
 
 - Popular: ranked by Kitsu popularity.
 - Top Rated: ranked by Kitsu's average rating; this is not an IMDb rating.

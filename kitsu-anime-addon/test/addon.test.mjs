@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
 import { CATEGORIES, CATEGORY_NAMES } from '../src/categories.mjs';
 import { ApiError, createApiClient, createKitsuService } from '../src/kitsu.mjs';
-import { createAddonServer, manifest } from '../src/addon.mjs';
+import { buildManifest, createAddonServer, manifest } from '../src/addon.mjs';
+import { CATALOG_OPTIONS, encodeConfig, normalizeCatalogIds, parseConfig } from '../src/catalog-config.mjs';
 
 function anime(id, attributes = {}) {
   return {
@@ -13,20 +14,40 @@ function anime(id, attributes = {}) {
 }
 const jsonResponse = (value, status = 200) => new Response(JSON.stringify(value), { status });
 
-test('manifest advertises all 40 categories as main catalogs and isolates search', () => {
-  assert.equal(manifest.catalogs.length, 45);
+test('plain manifest shows no rows and asks Stremio to configure', () => {
+  assert.equal(manifest.id, 'personal.kitsu.anime.shelf');
+  assert.deepEqual(manifest.catalogs.map(catalog => catalog.id), ['kitsu-search'], 'search only, which is never a row');
+  assert.deepEqual(manifest.behaviorHints, { adult: false, p2p: false, configurable: true, configurationRequired: true });
   assert.deepEqual(manifest.types, ['series']);
-  assert.deepEqual(manifest.resources[0].types, ['series']);
+  assert.deepEqual(manifest.idPrefixes, ['kitsu:']);
   assert.match(manifest.logo, /^https:\/\/.+\/logo\.png$/);
+  assert.deepEqual(manifest.resources.map(resource => resource.name), ['catalog', 'meta']);
+});
+
+test('configured manifest offers Top 10, four lists and all 40 categories, plus search', () => {
   assert.equal(CATEGORY_NAMES.length, 40);
-  assert.deepEqual(manifest.catalogs.slice(0, 40).map(catalog => catalog.name), CATEGORY_NAMES);
-  assert.equal(new Set(manifest.catalogs.map(catalog => catalog.id)).size, 45);
-  for (const catalog of manifest.catalogs) {
+  assert.equal(CATALOG_OPTIONS.length, 45);
+  const all = buildManifest(CATALOG_OPTIONS.map(option => option.id));
+  assert.equal(all.id, manifest.id, 'same add-on ID, so installs replace each other');
+  assert.equal(all.catalogs.length, 46);
+  assert.deepEqual(all.catalogs.slice(0, 5).map(catalog => catalog.id), ['kitsu-top10', 'kitsu-popular', 'kitsu-top-rated', 'kitsu-airing', 'kitsu-movies']);
+  assert.deepEqual(all.catalogs.slice(5, 45).map(catalog => catalog.id), Object.values(CATEGORIES).map(slug => `kitsu-category-${slug}`));
+  assert.equal(new Set(all.catalogs.map(catalog => catalog.id)).size, 46);
+  for (const catalog of all.catalogs) {
     assert.equal(catalog.extra.some(extra => extra.name === 'genre'), false);
     assert.equal(catalog.type, 'series');
   }
-  assert.equal(manifest.catalogs.filter(catalog => catalog.extra.some(extra => extra.name === 'search' && extra.isRequired)).length, 1);
-  assert.deepEqual(manifest.resources.map(resource => resource.name), ['catalog', 'meta']);
+  assert.equal(all.catalogs.filter(catalog => catalog.extra.some(extra => extra.name === 'search' && extra.isRequired)).length, 1);
+  assert.deepEqual(all.behaviorHints, { adult: false, p2p: false, configurable: true });
+});
+
+test('install-link configuration is short, canonical and strict', () => {
+  assert.deepEqual(parseConfig('isekai.top10.action.isekai'), ['kitsu-top10', 'kitsu-category-action', 'kitsu-category-isekai']);
+  assert.equal(encodeConfig(['kitsu-category-isekai', 'kitsu-top10', 'kitsu-category-super-power']), 'top10.isekai.super-power');
+  for (const bad of ['', 'nope', 'action..isekai', 'Action', 'action/isekai', 'a'.repeat(1001)]) assert.equal(parseConfig(bad), null, bad);
+  assert.deepEqual(normalizeCatalogIds(['kitsu-category-isekai', 'kitsu-popular']), ['kitsu-popular', 'kitsu-category-isekai']);
+  assert.equal(normalizeCatalogIds(['kitsu-search']), null);
+  assert.equal(normalizeCatalogIds('kitsu-popular'), null);
 });
 
 test('catalog bridges Kitsu pages into 100-item Stremio pages without losing the next page', async () => {
@@ -215,4 +236,44 @@ test('series catalog items can open episode metadata through the HTTP contract',
   assert.equal(metas[0].type, 'series');
   const { meta } = await (await fetch(`${base}/meta/series/${metas[0].id}.json`)).json();
   assert.equal(meta.videos[0].id, 'kitsu:1:1');
+});
+
+test('configured install links route catalogs, metadata and the configure page', async t => {
+  const calls = [];
+  const server = createAddonServer({ service: {
+    catalog: async (id, extra) => { calls.push({ id, extra }); return { metas: [] }; },
+    metadata: async id => ({ meta: { id, type: 'series', name: 'x', videos: [{ id: `${id}:1` }] } })
+  }, logger: { error() {} } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const configured = await (await fetch(`${base}/c/isekai.top10/manifest.json`)).json();
+  assert.deepEqual(configured.catalogs.map(catalog => catalog.id), ['kitsu-top10', 'kitsu-category-isekai', 'kitsu-search']);
+  assert.equal(configured.behaviorHints.configurationRequired, undefined);
+  assert.equal((await fetch(`${base}/c/not-a-genre/manifest.json`)).status, 404);
+  await fetch(`${base}/c/isekai/catalog/series/kitsu-category-isekai/skip=100.json`);
+  assert.deepEqual(calls.at(-1), { id: 'kitsu-category-isekai', extra: { skip: '100' } });
+  const meta = await (await fetch(`${base}/c/isekai/meta/series/kitsu:7.json`)).json();
+  assert.equal(meta.meta.videos[0].id, 'kitsu:7:1', 'same IDs for configured installs');
+  const page = await fetch(`${base}/c/isekai.top10/configure`);
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get('content-type'), /text\/html/);
+  assert.equal((await fetch(`${base}/c/isekai.top10/app.js`)).status, 200);
+  const options = await (await fetch(`${base}/catalog-options.json`)).json();
+  assert.equal(options.options.length, 45);
+  assert.equal((await fetch(`${base}/manifest.json`).then(response => response.json())).behaviorHints.configurationRequired, true);
+});
+
+test('Top 10 Airing is the first ten of Currently Airing', async () => {
+  const pages = [];
+  const api = { request: async (path, params) => {
+    pages.push(params);
+    const page = Number(params['page[number]']);
+    return { data: Array.from({ length: 20 }, (_, i) => anime((page - 1) * 20 + i + 1)), links: { next: 'x' }, meta: { count: 200 } };
+  } };
+  const service = createKitsuService(api);
+  const top = await service.catalog('kitsu-top10', {});
+  assert.deepEqual(top.metas.map(meta => meta.id), Array.from({ length: 10 }, (_, i) => `kitsu:${i + 1}`));
+  assert.equal(pages[0]['filter[status]'], 'current');
+  assert.deepEqual(await service.catalog('kitsu-top10', { skip: '100' }), { metas: [] });
 });

@@ -114,6 +114,10 @@ dialog::backdrop{background:rgba(5,7,10,.7);backdrop-filter:blur(3px)}
 .skeleton{aspect-ratio:2/3;border-radius:8px;background:linear-gradient(110deg,#1a1e27 20%,#272d38 40%,#1a1e27 60%);background-size:200% 100%;animation:shimmer 1.6s infinite}
 @keyframes shimmer{to{background-position:-200% 0}}
 
+/* Personal add-on row picker */
+#row-lists{margin:6px 0 8px}.row-genres{margin-bottom:14px}.row-genres .chip{font-size:12px}
+.chip[aria-pressed="true"]::before{content:"✓ "}
+#rows-status{margin-top:8px}
 /* Discover: top 10 and browse */
 .top10{list-style:none;margin:0;padding:0 0 8px;grid-auto-columns:minmax(150px,170px)}
 .top10 li{position:relative}

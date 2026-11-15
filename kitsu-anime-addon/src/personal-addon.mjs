@@ -6,6 +6,7 @@
 // by the same Kitsu service as the public add-on, so IDs, episode video IDs
 // and playback through Kitsu-compatible stream add-ons are unchanged.
 import { sha256, TOKEN_PATTERN } from './security.mjs';
+import { SEARCH_CATALOG_ID, manifestCatalog, normalizeCatalogIds, parseExtra } from './catalog-config.mjs';
 
 export const PERSONAL_CATALOGS = Object.freeze({
   'shelf-watching': { name: 'My Shelf · Continue Watching', status: 'watching' },
@@ -16,21 +17,27 @@ export const PERSONAL_CATALOGS = Object.freeze({
 });
 const PAGE = 100;
 
-export function personalManifest({ version, logo }) {
+// Shelf rows first, then the lists and genres the user chose in the dashboard,
+// then Kitsu search (never shown as a row).
+export function personalManifest({ version, logo, chosen = [] }) {
   return {
     id: 'personal.kitsu.anime.shelf.mine',
     version,
     name: 'Kitsu Anime Shelf · My Shelf',
     logo,
-    description: 'Your Kitsu Anime Shelf watchlist and recommendations. Install alongside Kitsu Anime Shelf for discovery catalogs.',
+    description: 'Your Kitsu Anime Shelf watchlist, recommendations and the lists and genres you chose in your dashboard.',
     types: ['series'],
     resources: [
       { name: 'catalog', types: ['series'] },
       { name: 'meta', types: ['series'], idPrefixes: ['kitsu:'] }
     ],
     idPrefixes: ['kitsu:'],
-    catalogs: Object.entries(PERSONAL_CATALOGS).map(([id, definition]) => ({ id, type: 'series', name: definition.name, extra: [{ name: 'skip' }] })),
-    behaviorHints: { adult: false, p2p: false, configurable: false }
+    catalogs: [
+      ...Object.entries(PERSONAL_CATALOGS).map(([id, definition]) => ({ id, type: 'series', name: definition.name, extra: [{ name: 'skip' }] })),
+      ...[...chosen, SEARCH_CATALOG_ID].map(manifestCatalog)
+    ],
+    // Configure opens the dashboard, where rows are chosen.
+    behaviorHints: { adult: false, p2p: false, configurable: true }
   };
 }
 
@@ -50,7 +57,6 @@ function entryMeta(entry, artwork) {
 }
 
 export function createPersonalAddon({ accounts, library, recommender, service, artwork, version, logo, rateLimiter, clientIp = request => request.socket?.remoteAddress || 'unknown', logger = console }) {
-  const manifest = personalManifest({ version, logo });
 
   function send(response, status, value, head, cache = 'private, max-age=60') {
     response.writeHead(status, {
@@ -92,11 +98,22 @@ export function createPersonalAddon({ accounts, library, recommender, service, a
       if (!install) { send(response, 404, { error: 'This install link is not valid. Create a new one in your dashboard.' }, head); return true; }
       const byToken = rateLimiter.hit(`install:${install.id}`, 240, 60000);
       if (!byToken.allowed) return tooMany(byToken);
-      if (rest === '/manifest.json') { send(response, 200, manifest, head, 'private, max-age=300'); return true; }
+      if (rest === '/configure') {
+        response.writeHead(302, { Location: '/dashboard#connections', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+        response.end();
+        return true;
+      }
+      const chosen = normalizeCatalogIds(await accounts.getCatalogChoices(install.user_id)) ?? [];
+      if (rest === '/manifest.json') { send(response, 200, personalManifest({ version, logo, chosen }), head, 'private, max-age=300'); return true; }
       const catalog = /^\/catalog\/(?:series|anime)\/([^/]+?)(?:\/([^/]+))?\.json$/.exec(rest);
       if (catalog) {
         const definition = PERSONAL_CATALOGS[catalog[1]];
-        if (!definition) { send(response, 404, { error: 'Catalog not found.' }, head); return true; }
+        if (!definition) {
+          // A chosen public list or genre (or search) is served by the public catalog service.
+          if (!chosen.includes(catalog[1]) && catalog[1] !== SEARCH_CATALOG_ID) { send(response, 404, { error: 'Catalog not found.' }, head); return true; }
+          send(response, 200, await service.catalog(catalog[1], parseExtra(catalog[2], url)), head, 'private, max-age=900');
+          return true;
+        }
         const extra = new URLSearchParams(catalog[2] || '');
         const skip = Number(extra.get('skip') ?? url.searchParams.get('skip') ?? 0);
         if (!Number.isSafeInteger(skip) || skip < 0 || skip > 100000) { send(response, 400, { error: 'Invalid catalog offset.' }, head); return true; }

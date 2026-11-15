@@ -44,6 +44,12 @@ export function createAccountStore(db, { now = () => new Date() } = {}) {
     async updateProfile(userId, { displayName }) {
       return one('UPDATE shelf_users SET display_name = $2, updated_at = now() WHERE id = $1 RETURNING id, email, display_name', [userId, displayName]);
     },
+    async getCatalogChoices(userId) {
+      return (await one('SELECT stremio_catalogs FROM shelf_users WHERE id = $1', [userId]))?.stremio_catalogs ?? [];
+    },
+    async setCatalogChoices(userId, catalogIds) {
+      return (await one('UPDATE shelf_users SET stremio_catalogs = $2::text[], updated_at = now() WHERE id = $1 RETURNING stremio_catalogs', [userId, catalogIds]))?.stremio_catalogs ?? [];
+    },
     async deleteUser(userId) {
       // Cascades to sessions, tokens, library, watch events and connections.
       const result = await db.query('DELETE FROM shelf_users WHERE id = $1', [userId]);
@@ -185,7 +191,7 @@ export function createAccountStore(db, { now = () => new Date() } = {}) {
     },
     async exportUser(userId) {
       const [user, library, tokens, connection, audit, events] = await Promise.all([
-        one('SELECT id, email, display_name, created_at, password_changed_at FROM shelf_users WHERE id = $1', [userId]),
+        one('SELECT id, email, display_name, created_at, password_changed_at, stremio_catalogs FROM shelf_users WHERE id = $1', [userId]),
         db.query(
           `SELECT 'kitsu:' || x.external_id AS anime_id, a.canonical_title AS title, l.status, l.progress, l.score,
                   l.created_at, l.updated_at

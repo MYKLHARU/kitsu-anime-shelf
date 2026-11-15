@@ -6,7 +6,7 @@ Status: **release candidate 2.0.0-rc.1** on `feature/2.0-foundations`. Not merge
 
 ## Compatibility guarantees
 
-- The public manifest keeps its ID (`personal.kitsu.anime.shelf`), catalogs, `kitsu:` ID prefix and episode video IDs (`kitsu:<id>:<n>`). Only `version` changes.
+- The public manifest keeps its ID (`personal.kitsu.anime.shelf`), `kitsu:` ID prefix and episode video IDs (`kitsu:<id>:<n>`). **Rows are chosen by the user:** the plain `/manifest.json` lists only search and sets `configurationRequired`, so existing installs show no rows until reinstalled from the setup page. Configured installs use `/c/<keys>/manifest.json` (see `src/catalog-config.mjs`), and the same catalog, meta and artwork routes work under that prefix. A new `kitsu-top10` catalog serves the first ten of Currently Airing.
 - Public routes (`/manifest.json`, `/catalog/…`, `/meta/…`, artwork, `/health`, the setup site) are handled by the same code as 1.4.3. The 2.0 application only receives `/api/v2/*`, `/u/*` and `/dashboard*`.
 - Personal catalogs are a **separate** add-on (`personal.kitsu.anime.shelf.mine`) at `/u/<install-token>/manifest.json`. Its metadata responses come from the same Kitsu service, so playback through Kitsu-compatible stream add-ons works identically. The end-to-end test asserts that personal and public metadata are byte-for-byte equal.
 - `/health` gains `version`, `accounts` and `anilist` fields; existing fields are unchanged.
@@ -47,6 +47,7 @@ All responses are JSON with `Cache-Control: no-store`. Non-GET requests must sen
 | `GET /api/v2/library[?status=]`, `GET/PATCH/DELETE /api/v2/library/kitsu:<id>` | Watchlist and progress. `PATCH` accepts `status`, `progress`, `score` and an optional `If-Match: "<revision>"`. |
 | `GET /api/v2/recommendations` | Personalised suggestions. |
 | `GET/POST /api/v2/stremio/tokens`, `DELETE /api/v2/stremio/tokens/:id` | Personal add-on install links (shown once). |
+| `GET/PUT /api/v2/stremio/catalogs` | Lists and genres in the personal add-on (migration 003). |
 | `POST /api/v2/anilist/connect`, `GET /api/v2/anilist/callback`, `GET /api/v2/anilist/status`, `POST /api/v2/anilist/sync`, `PATCH /api/v2/anilist/settings`, `DELETE /api/v2/anilist` | AniList. |
 | `GET /u/<token>/manifest.json`, `/u/<token>/catalog/series/<id>.json`, `/u/<token>/meta/series/<id>.json` | Personal Stremio add-on. |
 

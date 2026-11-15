@@ -24,6 +24,8 @@ export const CATALOGS = Object.freeze({
   'kitsu-popular': { name: 'Kitsu · Popular', sort: 'popularityRank' },
   'kitsu-top-rated': { name: 'Kitsu · Top Rated', sort: '-averageRating' },
   'kitsu-airing': { name: 'Kitsu · Currently Airing', sort: 'popularityRank', status: 'current' },
+  // The first ten of Currently Airing, served from the same cached page.
+  'kitsu-top10': { name: 'Kitsu · Top 10 Airing', source: 'kitsu-airing', top: 10 },
   'kitsu-movies': { name: 'Kitsu · Anime Movies', sort: 'popularityRank', subtype: 'movie' },
   'kitsu-search': { name: 'Kitsu · Search', searchOnly: true }
 });
@@ -173,6 +175,11 @@ export function createKitsuService(api = createApiClient(), { artwork, seasonGro
   async function catalog(id, extra = {}) {
     const definition = CATALOGS[id];
     if (!definition) throw new ApiError('Catalog not found.', 404);
+    if (definition.source) {
+      if (extra.skip !== undefined && Number(extra.skip) !== 0) return { metas: [] };
+      const { metas } = await catalog(definition.source, {});
+      return { metas: metas.slice(0, definition.top) };
+    }
     const skip = extra.skip === undefined ? 0 : Number(extra.skip);
     if (!Number.isSafeInteger(skip) || skip < 0 || skip > 1000000) throw new ApiError('Invalid catalog offset.', 400);
     const query = typeof extra.search === 'string' ? extra.search.trim() : '';

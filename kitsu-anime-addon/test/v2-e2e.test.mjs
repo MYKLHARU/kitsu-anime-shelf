@@ -84,6 +84,11 @@ test('Kitsu Anime Shelf 2.0 end to end', { skip: dbSkip, timeout: 120000 }, asyn
     assert.equal(manifest.body.id, 'personal.kitsu.anime.shelf');
     assert.deepEqual(manifest.body.idPrefixes, ['kitsu:']);
     assert.equal(manifest.body.catalogs.length, publicManifest.catalogs.length);
+    assert.equal(manifest.body.behaviorHints.configurationRequired, true, 'plain install shows no rows');
+    const configured = await alice.request('/c/top10.isekai/manifest.json');
+    assert.deepEqual(configured.body.catalogs.map(catalog => catalog.id), ['kitsu-top10', 'kitsu-category-isekai', 'kitsu-search']);
+    const top10 = await alice.request('/c/top10.isekai/catalog/series/kitsu-top10.json');
+    assert.ok(top10.body.metas.length > 0 && top10.body.metas.length <= 10);
     assert.equal(manifest.headers.get('access-control-allow-origin'), '*');
     const health = await alice.request('/health');
     assert.equal(health.body.accounts, true);
@@ -211,6 +216,25 @@ test('Kitsu Anime Shelf 2.0 end to end', { skip: dbSkip, timeout: 120000 }, asyn
     assert.deepEqual(completed.body.metas.map(meta => meta.id), ['kitsu:5']);
     const forYou = await stremio.request(`${prefix}/catalog/series/shelf-for-you.json`);
     assert.ok(forYou.body.metas.length > 0);
+    // Only shelf rows (plus search) until lists and genres are chosen.
+    assert.deepEqual(manifest.body.catalogs.map(catalog => catalog.id),
+      ['shelf-watching', 'shelf-for-you', 'shelf-planning', 'shelf-on-hold', 'shelf-completed', 'kitsu-search']);
+    assert.equal(manifest.body.behaviorHints.configurable, true);
+    assert.equal((await alice.request('/api/v2/stremio/catalogs')).body.catalogs.length, 0);
+    assert.equal((await alice.request('/api/v2/stremio/catalogs', { method: 'PUT', body: { catalogs: ['kitsu-category-nope'] } })).status, 400);
+    assert.equal((await alice.request('/api/v2/stremio/catalogs', { method: 'PUT', body: { catalogs: ['kitsu-popular'] }, headers: { Origin: 'https://evil.example' } })).status, 403);
+    const saved = await alice.request('/api/v2/stremio/catalogs', { method: 'PUT', body: { catalogs: ['kitsu-category-isekai', 'kitsu-top10'] } });
+    assert.deepEqual(saved.body.catalogs, ['kitsu-top10', 'kitsu-category-isekai'], 'stored in canonical order');
+    const chosenManifest = await stremio.request(manifestUrl.pathname);
+    assert.deepEqual(chosenManifest.body.catalogs.slice(5).map(catalog => catalog.id), ['kitsu-top10', 'kitsu-category-isekai', 'kitsu-search']);
+    const isekaiRow = await stremio.request(`${prefix}/catalog/series/kitsu-category-isekai.json`);
+    assert.deepEqual(isekaiRow.body.metas.map(meta => meta.id).sort(), ['kitsu:2', 'kitsu:5']);
+    assert.equal((await stremio.request(`${prefix}/catalog/series/kitsu-category-mecha.json`)).status, 404, 'unchosen rows are not served');
+    assert.ok((await stremio.request(`${prefix}/catalog/series/kitsu-search/search=sword.json`)).body.metas.some(meta => meta.id === 'kitsu:1'));
+    assert.equal((await bob.request('/api/v2/stremio/catalogs')).body.catalogs.length, 0, 'choices are per user');
+    const configure = await stremio.request(`${prefix}/configure`, { raw: true });
+    assert.equal(configure.status, 302);
+    assert.equal(configure.headers.get('location'), '/dashboard#connections');
     const meta = await stremio.request(`${prefix}/meta/series/kitsu:1.json`);
     const publicMeta = await stremio.request('/meta/series/kitsu:1.json');
     assert.deepEqual(meta.body, publicMeta.body, 'personal metadata matches public metadata and video IDs');
@@ -320,6 +344,7 @@ test('Kitsu Anime Shelf 2.0 end to end', { skip: dbSkip, timeout: 120000 }, asyn
     assert.equal(exported.status, 200);
     assert.match(exported.headers.get('content-disposition'), /attachment/);
     assert.equal(exported.body.account.email, 'alice@example.com');
+    assert.deepEqual(exported.body.account.stremio_catalogs, ['kitsu-top10', 'kitsu-category-isekai']);
     assert.ok(exported.body.library.length >= 4);
     assert.equal(JSON.stringify(exported.body).includes('password_hash'), false);
     assert.equal(JSON.stringify(exported.body).includes('access_token'), false);
@@ -386,7 +411,7 @@ test('2.0 stays disabled unless fully configured and migrated', { skip: dbSkip }
   try {
     const env = { ACCOUNTS_ENABLED: 'true', PUBLIC_URL: 'https://shelf.example.org', DATABASE_URL: 'postgres://unused', TOKEN_ENCRYPTION_KEY: KEY };
     assert.equal(await prepareV2({ env, logger, db: unmigrated.pool }), undefined);
-    assert.match(errors.at(-1), /Pending: 001_personal_library\.sql, 002_accounts_sync_catalogs\.sql/);
+    assert.match(errors.at(-1), /Pending: 001_personal_library\.sql, 002_accounts_sync_catalogs\.sql, 003_stremio_catalog_choices\.sql/);
     const factory = await prepareV2({ env: { ...env, RUN_MIGRATIONS_ON_START: 'true' }, logger, db: unmigrated.pool });
     assert.equal(typeof factory, 'function');
   } finally {

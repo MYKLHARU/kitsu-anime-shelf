@@ -124,6 +124,12 @@
             <input id="new-token-url" readonly aria-label="Personal manifest URL">
             <div class="actions"><a id="new-token-install" class="button primary" href="#">Install in Stremio ↗</a><button id="new-token-copy" class="button secondary" type="button">Copy URL</button></div>
           </div>
+          <h3>Rows in your personal add-on</h3>
+          <p class="muted">Your shelf rows (Continue Watching, For You, Plan to Watch, On Hold, Completed) always appear. Add the lists and genres you want as well; with these you don't need the main add-on installed.</p>
+          <div id="row-lists" class="chips" role="group" aria-label="Lists"></div>
+          <div id="row-genres" class="chips row-genres" role="group" aria-label="Genres"></div>
+          <div class="actions"><button id="rows-save" class="button primary" type="button">Save rows</button><button id="rows-all" class="button ghost small" type="button">All genres</button><button id="rows-none" class="button ghost small" type="button">Clear</button></div>
+          <p id="rows-status" class="hint" role="status" aria-live="polite"></p>
           <h3>Active install links</h3>
           <ul id="tokens" class="list"></ul>
         </article>

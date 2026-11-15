@@ -1,10 +1,42 @@
 const $ = selector => document.querySelector(selector);
 const addonOrigin = document.documentElement.dataset.addonOrigin || location.origin;
 const addonUrl = new URL(addonOrigin);
-const manifestUrl = new URL('/manifest.json', addonUrl).href;
 const fallbackPoster = new URL('./logo.svg', document.baseURI).href;
-$('#install').href = `stremio://${addonUrl.host}/manifest.json`;
-$('#manifest-url').value = manifestUrl;
+// Rows chosen on this page are encoded in the install URL: /c/<keys>/manifest.json
+const chosen = new Set((/^\/c\/([a-z0-9.-]+)\/configure\/?$/.exec(location.pathname)?.[1] || '').split('.').filter(Boolean));
+let options = [];
+let manifestUrl = '';
+function updateInstall() {
+  const keys = options.filter(option => chosen.has(option.key)).map(option => option.key);
+  for (const chip of document.querySelectorAll('.choose-chip')) chip.setAttribute('aria-pressed', String(chosen.has(chip.dataset.key)));
+  manifestUrl = keys.length ? new URL(`/c/${keys.join('.')}/manifest.json`, addonUrl).href : '';
+  $('#manifest-url').value = manifestUrl;
+  $('#install').href = keys.length ? manifestUrl.replace(/^https?:/, 'stremio:') : '#';
+  $('#install').setAttribute('aria-disabled', String(!keys.length));
+  $('#copy-status').textContent = keys.length ? `${keys.length} row${keys.length === 1 ? '' : 's'} chosen. Install, or copy the URL for another device.` : 'Choose at least one list or genre.';
+}
+function renderChoices() {
+  const chip = option => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'choose-chip';
+    button.dataset.key = option.key;
+    button.textContent = option.name;
+    button.addEventListener('click', () => { if (chosen.has(option.key)) chosen.delete(option.key); else chosen.add(option.key); updateInstall(); });
+    return button;
+  };
+  $('#choose-lists').replaceChildren(...options.filter(option => option.group === 'list').map(chip));
+  $('#choose-genres').replaceChildren(...options.filter(option => option.group === 'genre').map(chip));
+  updateInstall();
+}
+$('#choose-all').addEventListener('click', () => { for (const option of options) if (option.group === 'genre') chosen.add(option.key); updateInstall(); });
+$('#choose-none').addEventListener('click', () => { for (const option of options) if (option.group === 'genre') chosen.delete(option.key); updateInstall(); });
+$('#install').addEventListener('click', event => {
+  if (manifestUrl) return;
+  event.preventDefault();
+  $('#copy-status').textContent = 'Choose at least one list or genre first.';
+  $('#choose').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
 // Show the 2.0 dashboard link only when this server has accounts enabled.
 fetch(new URL('/health', addonUrl)).then(response => response.json()).then(health => {
   if (!health.accounts) return;
@@ -16,6 +48,7 @@ if (addonUrl.protocol === 'https:' && !['localhost', '127.0.0.1', '[::1]'].inclu
   $('#hosting-note').textContent = 'This hosted add-on can be installed on other devices using the same manifest URL. Share the URL below to let other people install it.';
 }
 $('#copy').addEventListener('click', async () => {
+  if (!manifestUrl) { $('#copy-status').textContent = 'Choose at least one list or genre first.'; return; }
   try {
     await navigator.clipboard.writeText(manifestUrl);
     $('#copy-status').textContent = 'Copied. Paste it into the add-on URL field in Stremio.';
@@ -96,10 +129,11 @@ $('#search').addEventListener('input', updateCatalogButtons);
 
 async function init() {
   try {
-    const response = await fetch(new URL('/manifest.json', addonUrl));
-    if (!response.ok) throw new Error('Manifest unavailable. Refresh to try again.');
-    const manifest = await response.json();
-    const catalogs = manifest.catalogs.filter(catalog => !catalog.extra.some(extra => extra.name === 'search' && extra.isRequired));
+    const response = await fetch(new URL('/catalog-options.json', addonUrl));
+    if (!response.ok) throw new Error('Catalog list unavailable. Refresh to try again.');
+    options = (await response.json()).options;
+    renderChoices();
+    const catalogs = options.map(option => ({ id: option.id, name: option.name }));
     for (const catalog of catalogs) {
       const option = document.createElement('option');
       option.value = catalog.id;
