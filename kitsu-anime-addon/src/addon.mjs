@@ -5,9 +5,11 @@ import { createArtworkService } from './artwork.mjs';
 import { createAnimeMappingLoader } from './anime-mappings.mjs';
 import { createSeasonGroups } from './season-groups.mjs';
 
+export const VERSION = '2.0.0-rc.1';
+
 export const manifest = {
   id: 'personal.kitsu.anime.shelf',
-  version: '1.4.3',
+  version: VERSION,
   name: 'Kitsu Anime Shelf',
   logo: 'https://site--kitsu-anime-addon--zmzjxk5mn92q.code.run/logo.png',
   description: 'Anime discovery from Kitsu.app with grouped TV seasons, 40 main category catalogs, popular, top rated, currently airing, films, and search.',
@@ -36,7 +38,12 @@ const assets = new Map([
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/logo.svg', ['logo.svg', 'image/svg+xml']],
   ['/logo.png', ['logo.png', 'image/png']],
-  ['/tmdb.svg', ['tmdb.svg', 'image/svg+xml']]
+  ['/tmdb.svg', ['tmdb.svg', 'image/svg+xml']],
+  // 2.0 dashboard. When accounts are enabled the v2 application serves these
+  // with a Content-Security-Policy; otherwise the page explains it is disabled.
+  ['/dashboard', ['dashboard.html', 'text/html; charset=utf-8']],
+  ['/dashboard/app.js', ['dashboard.js', 'text/javascript; charset=utf-8']],
+  ['/dashboard/app.css', ['dashboard.css', 'text/css; charset=utf-8']]
 ]);
 
 function json(response, status, value, cache = 0, head = false) {
@@ -63,15 +70,17 @@ function parseExtra(raw, url) {
   return extra;
 }
 
+// v2: optional factory from src/v2.mjs that adds accounts, the dashboard and
+// personal catalogs. Without it the server is the unchanged public add-on.
 export function createAddonServer({ service, artwork, logger = console,
   publicUrl = process.env.PUBLIC_URL || '', token = process.env.TMDB_READ_ACCESS_TOKEN || '', apiKey = process.env.TMDB_API_KEY || '',
-  groupSeasons = process.env.GROUP_ANIME_SEASONS !== 'false' } = {}) {
+  groupSeasons = process.env.GROUP_ANIME_SEASONS !== 'false', v2, api, loadMappings, seasonGroups } = {}) {
   const groupingEnabled = !service && groupSeasons;
   const artworkCapability = artwork?.enabled;
   if (!service) {
-    const api = createApiClient();
-    const loadMappings = createAnimeMappingLoader();
-    const seasonGroups = groupSeasons ? createSeasonGroups({ loadMappings }) : undefined;
+    api ??= createApiClient();
+    loadMappings ??= createAnimeMappingLoader();
+    seasonGroups ??= groupSeasons ? createSeasonGroups({ loadMappings }) : undefined;
     artwork ??= createArtworkService({ token, apiKey, publicUrl, mappingLoader: loadMappings,
       getAnime: async id => {
         const result = await api.request(`anime/${id}`, { include: 'categories' }, 3600);
@@ -81,7 +90,18 @@ export function createAddonServer({ service, artwork, logger = console,
     });
     service = createKitsuService(api, { artwork, seasonGroups });
   }
-  return http.createServer(async (request, response) => {
+  const extension = v2?.({ api, service, artwork, loadMappings, seasonGroups });
+  const server = http.createServer(async (request, response) => {
+    if (extension) {
+      try {
+        if (await extension.handle(request, response)) return;
+      } catch (error) {
+        logger.error(`${new Date().toISOString()} ${error.message}`);
+        if (!response.headersSent) json(response, 500, { error: 'An unexpected error occurred.' });
+        else response.destroy();
+        return;
+      }
+    }
     // All JSON responses (including errors) honor HEAD.
     const sendJson = (status, value, cache = 0) => json(response, status, value, cache, request.method === 'HEAD');
     response.setHeader('Access-Control-Allow-Origin', '*');
@@ -105,8 +125,9 @@ export function createAddonServer({ service, artwork, logger = console,
         response.end(request.method === 'HEAD' ? undefined : contents);
         return;
       }
-      if (url.pathname === '/health') { sendJson(200, { status: 'ok', name: manifest.name,
-        titleLogos: Boolean(artwork?.enabled ?? service?.capabilities?.artwork ?? artworkCapability), seasonGrouping: groupingEnabled }); return; }
+      if (url.pathname === '/health') { sendJson(200, { status: 'ok', name: manifest.name, version: VERSION,
+        titleLogos: Boolean(artwork?.enabled ?? service?.capabilities?.artwork ?? artworkCapability), seasonGrouping: groupingEnabled,
+        accounts: Boolean(extension?.capabilities?.accounts), anilist: Boolean(extension?.capabilities?.anilist) }); return; }
       if (url.pathname === '/manifest.json') { sendJson(200, manifest, 300); return; }
       const background = /^\/artwork\/v1\/background\/kitsu:([1-9]\d{0,9})\.jpg$/.exec(url.pathname);
       if (background && artwork?.background) {
@@ -154,4 +175,6 @@ export function createAddonServer({ service, artwork, logger = console,
       sendJson(status, { error: status === 500 ? 'An unexpected error occurred.' : error.message });
     }
   });
+  if (extension?.close) server.on('close', () => extension.close().catch(() => {}));
+  return server;
 }

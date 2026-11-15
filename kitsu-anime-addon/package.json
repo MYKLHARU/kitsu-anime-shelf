@@ -1,6 +1,6 @@
 {
   "name": "kitsu-anime-shelf",
-  "version": "1.4.3",
+  "version": "2.0.0-rc.1",
   "private": true,
   "type": "module",
   "description": "A personal Stremio anime catalog powered by Kitsu.app",
@@ -11,6 +11,7 @@
     "start": "node server.mjs",
     "build:pages": "node scripts/build-github-pages.mjs",
     "test": "node --test test/*.test.mjs",
+    "migrate": "node scripts/migrate.mjs",
     "test:live": "node scripts/check-live.mjs",
     "test:artwork": "node scripts/check-artwork.mjs",
     "test:seasons": "node scripts/check-seasons.mjs",

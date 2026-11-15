@@ -1,6 +1,6 @@
 -- Kitsu Anime Shelf 2.0: PostgreSQL foundation.
--- Apply only to a dedicated database after reviewing credentials and backups.
-BEGIN;
+-- Applied by `npm run migrate` (scripts/migrate.mjs), which wraps each file in a
+-- transaction and records it in shelf_schema_migrations.
 
 CREATE TABLE IF NOT EXISTS shelf_users (
   id uuid PRIMARY KEY,
@@ -50,4 +50,3 @@ CREATE TABLE IF NOT EXISTS shelf_watch_events (
 CREATE INDEX IF NOT EXISTS shelf_watch_events_user_time_idx
   ON shelf_watch_events(user_id, occurred_at DESC);
 
-COMMIT;

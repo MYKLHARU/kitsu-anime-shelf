@@ -56,7 +56,9 @@ export function createAnimeMappingLoader({ fetchImpl = fetch, now = Date.now, ca
         if (!Array.isArray(source) || source.length > 100000) throw new Error('Invalid anime mapping source.');
         rows = source.filter(row => Number.isSafeInteger(row.kitsu_id) && row.kitsu_id > 0).map(row => ({
           kitsu_id: row.kitsu_id, type: row.type, themoviedb_id: row.themoviedb_id,
-          season: row.season, episode_offset: row.episode_offset
+          season: row.season, episode_offset: row.episode_offset,
+          // Used by 2.0 AniList synchronisation.
+          ...(Number.isSafeInteger(row.anilist_id) && row.anilist_id > 0 ? { anilist_id: row.anilist_id } : {})
         }));
         saved = now();
         retry = 0;

@@ -1,12 +1,21 @@
 // Storage-agnostic library operations. No database connection or HTTP exposure.
 // Adapter contract: get(userId, animeId) -> entry|null;
-// put(userId, entry) -> entry. Production adapters must enforce user isolation.
+// put(userId, entry) -> entry. Optional: patch(userId, animeId, changes,
+// candidate, options) for atomic partial updates, list(userId, filter) and
+// remove(userId, animeId). Production adapters must enforce user isolation.
 import { createLibraryEntry, updateLibraryEntry } from './library-model.mjs';
 
 function assertUserId(userId) {
   if (typeof userId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(userId)) {
     throw new TypeError('A validated user identifier is required');
   }
+}
+
+// Validate the stored entry, keeping storage metadata (revision, timestamps).
+function validated(stored) {
+  const entry = createLibraryEntry(stored);
+  if (stored.revision === undefined) return entry;
+  return Object.freeze({ ...entry, revision: stored.revision, updatedAt: stored.updatedAt });
 }
 
 export function createLibraryService(adapter) {
@@ -16,21 +25,33 @@ export function createLibraryService(adapter) {
   return Object.freeze({
     async get(userId, animeId) {
       assertUserId(userId);
-      const validated = createLibraryEntry({ animeId });
-      const stored = await adapter.get(userId, validated.animeId);
-      return stored == null ? null : createLibraryEntry(stored);
+      const valid = createLibraryEntry({ animeId });
+      const stored = await adapter.get(userId, valid.animeId);
+      return stored == null ? null : validated(stored);
     },
-    async save(userId, animeId, changes = {}) {
+    async list(userId, filter = {}) {
+      assertUserId(userId);
+      if (typeof adapter.list !== 'function') throw new Error('This storage adapter cannot list entries');
+      if (filter.status !== undefined) createLibraryEntry({ animeId: 'kitsu:1', status: filter.status });
+      return adapter.list(userId, filter);
+    },
+    async remove(userId, animeId) {
+      assertUserId(userId);
+      createLibraryEntry({ animeId });
+      if (typeof adapter.remove !== 'function') throw new Error('This storage adapter cannot remove entries');
+      return adapter.remove(userId, animeId);
+    },
+    async save(userId, animeId, changes = {}, options = {}) {
       assertUserId(userId);
       const baseline = createLibraryEntry({ animeId });
       if (typeof adapter.patch === 'function') {
         // The persistent adapter applies partial updates in one SQL statement.
         const candidate = updateLibraryEntry(baseline, changes);
-        return createLibraryEntry(await adapter.patch(userId, animeId, changes, candidate));
+        return validated(await adapter.patch(userId, animeId, changes, candidate, options));
       }
       const existing = await adapter.get(userId, animeId);
       const entry = updateLibraryEntry(existing == null ? baseline : createLibraryEntry(existing), changes);
-      return createLibraryEntry(await adapter.put(userId, entry));
+      return validated(await adapter.put(userId, entry));
     }
   });
 }
@@ -50,6 +71,10 @@ export function createMemoryLibraryAdapter() {
       const updated = updateLibraryEntry(current, changes);
       entries.set(key(userId, animeId), updated);
       return updated;
-    }
+    },
+    async list(userId) {
+      return [...entries].filter(([k]) => JSON.parse(k)[0] === userId).map(([, entry]) => entry);
+    },
+    async remove(userId, animeId) { return entries.delete(key(userId, animeId)); }
   };
 }
