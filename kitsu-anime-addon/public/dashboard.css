@@ -114,8 +114,17 @@ dialog::backdrop{background:rgba(5,7,10,.7);backdrop-filter:blur(3px)}
 .skeleton{aspect-ratio:2/3;border-radius:8px;background:linear-gradient(110deg,#1a1e27 20%,#272d38 40%,#1a1e27 60%);background-size:200% 100%;animation:shimmer 1.6s infinite}
 @keyframes shimmer{to{background-position:-200% 0}}
 
+/* Discover: top 10 and browse */
+.top10{list-style:none;margin:0;padding:0 0 8px;grid-auto-columns:minmax(150px,170px)}
+.top10 li{position:relative}
+.rank{position:absolute;right:8px;bottom:auto;top:8px;min-width:30px;height:30px;padding:0 8px;border-radius:15px;background:var(--accent);color:var(--accent-ink);font-weight:750;font-size:15px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.chips.scroll{margin:0 0 6px}
+.chip.genre{font-size:12px}
+.more{margin-top:22px}
 @media(max-width:960px){.columns{grid-template-columns:1fr}.auth{grid-template-columns:1fr;gap:24px;padding:10px 0}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){
+  .chips.scroll{flex-wrap:nowrap;overflow-x:auto;padding-bottom:6px;scrollbar-width:thin}.chips.scroll .chip{flex:none}
+  .top10{grid-auto-columns:minmax(120px,140px)}
   .heading-row .button{width:100%}
   .bar{flex-wrap:wrap;gap:10px;padding:10px 14px}.brand span{display:none}
   .nav{order:3;width:100%;margin:0;overflow-x:auto}.nav a{flex:1;text-align:center;padding:8px 6px;font-size:13px}

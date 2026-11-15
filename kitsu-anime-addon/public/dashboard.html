@@ -93,9 +93,18 @@
         <p id="search-status" class="muted" role="status" aria-live="polite"></p>
         <div id="search-results" class="grid"></div>
       </div>
+      <h2 id="top10-heading">Top 10 right now</h2>
+      <p id="top10-status" class="muted" role="status" aria-live="polite">Loading the most popular airing anime…</p>
+      <ol id="top10" class="rail top10" aria-labelledby="top10-heading"></ol>
+      <h2 id="browse-heading">Browse</h2>
+      <div id="browse-chips" class="chips scroll" role="group" aria-labelledby="browse-heading"></div>
+      <p id="browse-status" class="muted" role="status" aria-live="polite"></p>
+      <div id="browse-results" class="grid"></div>
+      <div class="center more"><button id="browse-more" class="button secondary" type="button" hidden>Show more</button></div>
       <h2>For you</h2>
       <p id="recs-status" class="muted" role="status" aria-live="polite">Loading recommendations…</p>
       <div id="recs" class="grid"></div>
+      <div class="center more"><button id="recs-more" class="button secondary" type="button" hidden>Show more</button></div>
     </section>
 
     <!-- Connections -->
