@@ -41,3 +41,12 @@ This initial audit is based on the repository README, package manifest, service 
 - No routes are exposed and no external database connection is created. Production authentication, authorization, transactional updates and connection pooling are still required.
 
 **Before production:** implement a PostgreSQL adapter with atomic upserts, verified session-to-user binding (never trust a user ID supplied by the client), database least-privilege roles, migration tooling and backups. The current read-then-write service is not concurrency-safe for competing progress updates; implement optimistic concurrency or a transactional upsert before accepting real users. Confirm the canonical-anime mapping policy and provide account data export/deletion.
+
+
+## Third foundation: PostgreSQL adapter
+
+`src/postgres-library-adapter.mjs` adds a dependency-injected PostgreSQL adapter using parameterized queries and an atomic upsert. It maps existing `kitsu:<id>`-style identifiers to canonical anime records via `shelf_anime_external_ids`. Unknown IDs are rejected rather than guessed. It does not open connections or enable HTTP routes. Tests use a mocked query interface.
+
+**Known limitations:** The higher-level `createLibraryService.save` still performs a read followed by a write, so two simultaneous partial updates can overwrite each other. The adapter's upsert is atomic, but the overall read-modify-write operation is not. Do not expose concurrent authenticated writes until a transactional patch API or version check is implemented. The adapter also requires pre-created user and canonical anime rows; migration, account provisioning and mapping ingestion are separate work. UUID validation is syntactic, not authentication.
+
+The environment could not clone the public repository to run tests (network DNS unavailable). Run CI and review test results before merging.
