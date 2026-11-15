@@ -23,6 +23,11 @@ export function createLibraryService(adapter) {
     async save(userId, animeId, changes = {}) {
       assertUserId(userId);
       const baseline = createLibraryEntry({ animeId });
+      if (typeof adapter.patch === 'function') {
+        // The persistent adapter applies partial updates in one SQL statement.
+        const candidate = updateLibraryEntry(baseline, changes);
+        return createLibraryEntry(await adapter.patch(userId, animeId, changes, candidate));
+      }
       const existing = await adapter.get(userId, animeId);
       const entry = updateLibraryEntry(existing == null ? baseline : createLibraryEntry(existing), changes);
       return createLibraryEntry(await adapter.put(userId, entry));
@@ -39,6 +44,12 @@ export function createMemoryLibraryAdapter() {
     async put(userId, entry) {
       entries.set(key(userId, entry.animeId), entry);
       return entry;
+    },
+    async patch(userId, animeId, changes) {
+      const current = entries.get(key(userId, animeId)) ?? createLibraryEntry({ animeId });
+      const updated = updateLibraryEntry(current, changes);
+      entries.set(key(userId, animeId), updated);
+      return updated;
     }
   };
 }
