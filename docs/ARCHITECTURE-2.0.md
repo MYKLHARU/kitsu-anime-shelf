@@ -32,3 +32,12 @@ Run `cd kitsu-anime-addon && npm test` to exercise the new tests alongside the e
 ## Audit scope
 
 This initial audit is based on the repository README, package manifest, service entry point, and existing documented behavior. It is not a complete line-by-line security or performance audit. No live API, database, or deployment tests were performed as part of this first change.
+
+
+## Second foundation: persistence boundary
+
+- `kitsu-anime-addon/migrations/001_personal_library.sql` provides a **review-only PostgreSQL schema** for users, canonical anime, provider IDs, per-user library entries, and idempotent watch events. It is not applied automatically.
+- `src/library-store.mjs` defines an asynchronous adapter boundary and a **test-only, non-durable** in-memory adapter. The service validates user IDs and entry data, and its tests check user isolation.
+- No routes are exposed and no external database connection is created. Production authentication, authorization, transactional updates and connection pooling are still required.
+
+**Before production:** implement a PostgreSQL adapter with atomic upserts, verified session-to-user binding (never trust a user ID supplied by the client), database least-privilege roles, migration tooling and backups. The current read-then-write service is not concurrency-safe for competing progress updates; implement optimistic concurrency or a transactional upsert before accepting real users. Confirm the canonical-anime mapping policy and provide account data export/deletion.
