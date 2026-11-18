@@ -12,6 +12,7 @@ import { createAnilistSync } from './anilist-sync.mjs';
 import { createTokenCipher, parseEncryptionKey } from './security.mjs';
 import { isAllowedOriginSetting } from './library-api.mjs';
 import { createV2App } from './v2-app.mjs';
+import { createCatalogStore } from './catalog-store.mjs';
 
 export function readV2Config(env = process.env) {
   if (env.ACCOUNTS_ENABLED !== 'true') return { enabled: false };
@@ -79,7 +80,7 @@ export async function prepareV2({ env = process.env, logger = console, version, 
       accounts, library, animeStore, recommender, anilist, anilistSync, cipher, service, artwork,
       publicUrl: config.publicUrl, version, trustProxyHops: config.trustProxyHops, registrationOpen: config.registrationOpen, logger
     });
-    return { handle, close: async () => { clearInterval(maintenance); if (!injectedDb) await db.end(); }, capabilities: { accounts: true, anilist: Boolean(anilist) } };
+    return { handle, catalogStore: createCatalogStore(db), close: async () => { clearInterval(maintenance); if (!injectedDb) await db.end(); }, capabilities: { accounts: true, anilist: Boolean(anilist) } };
   };
   return factory;
 }

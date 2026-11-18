@@ -11,6 +11,7 @@ Personal shelves, built on the unchanged public add-on. Off unless `ACCOUNTS_ENA
 - **Personal Stremio rows:** Continue Watching, For You, Plan to Watch, On Hold and Completed, installed through revocable per-device links. Metadata and `kitsu:` episode IDs are identical to the public add-on, so playback is unchanged.
 - **Dashboard:** a responsive 2.0 dashboard at `/dashboard` with a strict Content Security Policy. The setup page links to it when accounts are enabled.
 - **Choose your rows:** the add-on now shows nothing in Stremio until you choose rows. Choose from Trending This Week, Top Airing, Top Upcoming, Highest Rated, Most Popular and 32 genres, on the setup page (saved in the install link) or in the dashboard for your personal install link. **Existing installs of `/manifest.json` show no rows until reinstalled with choices.** IDs, metadata and playback are unchanged.
+- **Faster rows:** each row's first page is saved in PostgreSQL (when accounts are enabled), so rows load instantly after a restart or deploy and refresh from Kitsu in the background. All offered rows are also warmed one at a time, shortly after start-up. Set `WARM_CATALOGS=false` to turn warm-up off.
 - **Discover:** a numbered Trending This Week row, and browsing by the same five lists and 32 genres, each title addable to your shelf in one tap.
 - **Database tooling:** a dependency-free PostgreSQL client (TLS, SCRAM-SHA-256), checksummed migrations (`npm run migrate`), and CI integration tests against PostgreSQL 16.
 

@@ -233,3 +233,45 @@ test('title details and catalog completion run ahead of queued first-page and ba
   for (const gate of gates) gate.resolve();
   await Promise.all([...initial, background, first, finish, details]);
 });
+
+test('a persistent store restores rows after a restart and refreshes stale ones in the background', async () => {
+  let time = 1000000;
+  const saved = new Map();
+  const store = {
+    get: async key => saved.get(key),
+    set: async (key, value, at) => { saved.set(key, { value, saved: at }); }
+  };
+  const first = createCatalogCache({ now: () => time, store });
+  assert.deepEqual(await first.read('kitsu-popular', async () => ({ metas: [{ id: 'kitsu:1' }] })), { metas: [{ id: 'kitsu:1' }] });
+  await setImmediate();
+  assert.deepEqual(saved.get('kitsu-popular'), { value: { metas: [{ id: 'kitsu:1' }] }, saved: 1000000 });
+
+  // A new process (empty memory) serves the saved row without calling Kitsu.
+  const restarted = createCatalogCache({ now: () => time, store });
+  let loads = 0;
+  assert.deepEqual(await restarted.read('kitsu-popular', async () => { loads += 1; return { metas: [] }; }), { metas: [{ id: 'kitsu:1' }] });
+  assert.equal(loads, 0);
+
+  // After the fresh period it still answers instantly, then refreshes in the background.
+  time += 900001;
+  const later = createCatalogCache({ now: () => time, store });
+  let release;
+  const refreshed = new Promise(resolve => { release = resolve; });
+  assert.deepEqual(await later.read('kitsu-popular', async () => { await refreshed; return { metas: [{ id: 'kitsu:2' }] }; }), { metas: [{ id: 'kitsu:1' }] });
+  release();
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.deepEqual(await later.read('kitsu-popular', async () => ({ metas: [] })), { metas: [{ id: 'kitsu:2' }] });
+  assert.deepEqual(saved.get('kitsu-popular').value, { metas: [{ id: 'kitsu:2' }] });
+
+  // Data older than the stale limit is not served from the store.
+  time += 86400000;
+  const expired = createCatalogCache({ now: () => time, store });
+  assert.deepEqual(await expired.read('kitsu-popular', async () => ({ metas: [{ id: 'kitsu:3' }] })), { metas: [{ id: 'kitsu:3' }] });
+});
+
+test('store failures never break catalog loading', async () => {
+  const broken = { get: async () => { throw new Error('db down'); }, set: async () => { throw new Error('db down'); } };
+  const cache = createCatalogCache({ store: broken });
+  assert.deepEqual(await cache.read('kitsu-popular', async () => ({ metas: [{ id: 'kitsu:9' }] })), { metas: [{ id: 'kitsu:9' }] });
+  assert.deepEqual(await cache.read('kitsu-popular', async () => ({ metas: [] })), { metas: [{ id: 'kitsu:9' }] });
+});

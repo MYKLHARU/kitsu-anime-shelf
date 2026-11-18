@@ -309,3 +309,25 @@ test('Top 10 Airing (retired, still served for old links) is the first ten of To
   assert.equal(pages[0]['filter[status]'], 'current');
   assert.deepEqual(await service.catalog('kitsu-top10', { skip: '100' }), { metas: [] });
 });
+
+test('rows are warmed one at a time in the background after start-up', async t => {
+  const requested = [];
+  let active = 0;
+  let maxActive = 0;
+  const api = { request: async (path, params) => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    await new Promise(resolve => setTimeout(resolve, 2));
+    active -= 1;
+    requested.push(params['filter[categories]'] || params['filter[status]'] || path);
+    return { data: [], links: {}, meta: { count: 0 } };
+  } };
+  const server = createAddonServer({ api, loadMappings: async () => [], groupSeasons: false, warmDelayMs: 0, token: '', apiKey: '', logger: { error() {} } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const start = Date.now();
+  while (!requested.includes('violence') && Date.now() - start < 5000) await new Promise(resolve => setTimeout(resolve, 20));
+  for (const expected of ['trending/anime', 'current', 'upcoming', 'action', 'violence']) assert.ok(requested.includes(expected), expected);
+  assert.ok(!requested.includes('yaoi'), 'only offered rows are warmed');
+  assert.equal(maxActive, 1, 'one request at a time');
+});
