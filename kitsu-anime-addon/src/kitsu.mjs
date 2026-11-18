@@ -21,10 +21,13 @@ export const CATALOGS = Object.freeze({
   ...Object.fromEntries(Object.entries(CATEGORIES).map(([name, category]) => [
     `kitsu-category-${category}`, { name, category, sort: 'popularityRank' }
   ])),
-  'kitsu-popular': { name: 'Kitsu · Popular', sort: 'popularityRank' },
-  'kitsu-top-rated': { name: 'Kitsu · Top Rated', sort: '-averageRating' },
-  'kitsu-airing': { name: 'Kitsu · Currently Airing', sort: 'popularityRank', status: 'current' },
-  // The first ten of Currently Airing, served from the same cached page.
+  // Kitsu's own weekly trending list (one page; falls back to Top Airing).
+  'kitsu-trending': { name: 'Kitsu · Trending This Week', trending: true, fallback: 'kitsu-airing' },
+  'kitsu-airing': { name: 'Kitsu · Top Airing', sort: 'popularityRank', status: 'current' },
+  'kitsu-upcoming': { name: 'Kitsu · Top Upcoming', sort: 'popularityRank', status: 'upcoming' },
+  'kitsu-top-rated': { name: 'Kitsu · Highest Rated', sort: '-averageRating' },
+  'kitsu-popular': { name: 'Kitsu · Most Popular', sort: 'popularityRank' },
+  // Retired from the row picker; still served for older install links.
   'kitsu-top10': { name: 'Kitsu · Top 10 Airing', source: 'kitsu-airing', top: 10 },
   'kitsu-movies': { name: 'Kitsu · Anime Movies', sort: 'popularityRank', subtype: 'movie' },
   'kitsu-search': { name: 'Kitsu · Search', searchOnly: true }
@@ -179,6 +182,18 @@ export function createKitsuService(api = createApiClient(), { artwork, seasonGro
       if (extra.skip !== undefined && Number(extra.skip) !== 0) return { metas: [] };
       const { metas } = await catalog(definition.source, {});
       return { metas: metas.slice(0, definition.top) };
+    }
+    if (definition.trending) {
+      if (extra.skip !== undefined && Number(extra.skip) !== 0) return { metas: [] };
+      return catalogCache.read(id, async () => {
+        let result;
+        try { result = await api.request('trending/anime', { limit: API_PAGE_SIZE }, 3600); }
+        catch { result = null; }
+        const items = Array.isArray(result?.data) ? result.data.filter(item => item?.type === 'anime' || item?.type === undefined) : [];
+        if (!items.length) return catalog(definition.fallback, {});
+        const seen = new Set();
+        return { metas: items.map(item => preview(item, result.included)).filter(meta => !seen.has(meta.id) && seen.add(meta.id)) };
+      });
     }
     const skip = extra.skip === undefined ? 0 : Number(extra.skip);
     if (!Number.isSafeInteger(skip) || skip < 0 || skip > 1000000) throw new ApiError('Invalid catalog offset.', 400);

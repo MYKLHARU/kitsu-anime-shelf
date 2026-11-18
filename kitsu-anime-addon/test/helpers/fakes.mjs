@@ -43,6 +43,10 @@ export function createFakeKitsuApi(animeList) {
         const slice = items.slice((page - 1) * size, page * size);
         return { data: slice.map(resource), included: included(slice), meta: { count: items.length }, links: {} };
       }
+      if (path === 'trending/anime') {
+        const items = ['5', '2', '1'].map(id => anime.get(id)).filter(Boolean);
+        return { data: items.map(resource) };
+      }
       const single = /^anime\/(\d+)$/.exec(path);
       if (single) {
         const item = anime.get(single[1]);

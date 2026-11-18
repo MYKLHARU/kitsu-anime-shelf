@@ -4,7 +4,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { CATEGORIES, CATEGORY_NAMES } from '../src/categories.mjs';
 import { ApiError, createApiClient, createKitsuService } from '../src/kitsu.mjs';
 import { buildManifest, createAddonServer, manifest } from '../src/addon.mjs';
-import { CATALOG_OPTIONS, encodeConfig, normalizeCatalogIds, parseConfig } from '../src/catalog-config.mjs';
+import { CATALOG_OPTIONS, GENRE_NAMES, encodeConfig, normalizeCatalogIds, parseConfig } from '../src/catalog-config.mjs';
 
 function anime(id, attributes = {}) {
   return {
@@ -24,15 +24,19 @@ test('plain manifest shows no rows and asks Stremio to configure', () => {
   assert.deepEqual(manifest.resources.map(resource => resource.name), ['catalog', 'meta']);
 });
 
-test('configured manifest offers Top 10, four lists and all 40 categories, plus search', () => {
-  assert.equal(CATEGORY_NAMES.length, 40);
-  assert.equal(CATALOG_OPTIONS.length, 45);
+test('configured manifest offers five lists and the 32 chosen genres, plus search', () => {
+  assert.equal(CATEGORY_NAMES.length, 40, 'full Kitsu taxonomy is still known');
+  assert.equal(GENRE_NAMES.length, 32);
+  assert.equal(CATALOG_OPTIONS.length, 37);
+  for (const removed of ['Asia', 'Children', 'Japan', 'Josei', 'Shoujo', 'Shoujo Ai', 'Shounen Ai', 'Yaoi']) assert.ok(!GENRE_NAMES.includes(removed), removed);
   const all = buildManifest(CATALOG_OPTIONS.map(option => option.id));
   assert.equal(all.id, manifest.id, 'same add-on ID, so installs replace each other');
-  assert.equal(all.catalogs.length, 46);
-  assert.deepEqual(all.catalogs.slice(0, 5).map(catalog => catalog.id), ['kitsu-top10', 'kitsu-popular', 'kitsu-top-rated', 'kitsu-airing', 'kitsu-movies']);
-  assert.deepEqual(all.catalogs.slice(5, 45).map(catalog => catalog.id), Object.values(CATEGORIES).map(slug => `kitsu-category-${slug}`));
-  assert.equal(new Set(all.catalogs.map(catalog => catalog.id)).size, 46);
+  assert.equal(all.catalogs.length, 38);
+  assert.deepEqual(all.catalogs.slice(0, 5).map(catalog => [catalog.id, catalog.name]), [
+    ['kitsu-trending', 'Kitsu · Trending This Week'], ['kitsu-airing', 'Kitsu · Top Airing'], ['kitsu-upcoming', 'Kitsu · Top Upcoming'],
+    ['kitsu-top-rated', 'Kitsu · Highest Rated'], ['kitsu-popular', 'Kitsu · Most Popular']]);
+  assert.deepEqual(all.catalogs.slice(5, 37).map(catalog => catalog.name), GENRE_NAMES);
+  assert.equal(new Set(all.catalogs.map(catalog => catalog.id)).size, 38);
   for (const catalog of all.catalogs) {
     assert.equal(catalog.extra.some(extra => extra.name === 'genre'), false);
     assert.equal(catalog.type, 'series');
@@ -42,8 +46,12 @@ test('configured manifest offers Top 10, four lists and all 40 categories, plus 
 });
 
 test('install-link configuration is short, canonical and strict', () => {
-  assert.deepEqual(parseConfig('isekai.top10.action.isekai'), ['kitsu-top10', 'kitsu-category-action', 'kitsu-category-isekai']);
-  assert.equal(encodeConfig(['kitsu-category-isekai', 'kitsu-top10', 'kitsu-category-super-power']), 'top10.isekai.super-power');
+  assert.deepEqual(parseConfig('isekai.trending.action.isekai'), ['kitsu-trending', 'kitsu-category-action', 'kitsu-category-isekai']);
+  assert.equal(encodeConfig(['kitsu-category-isekai', 'kitsu-trending', 'kitsu-category-super-power']), 'trending.isekai.super-power');
+  // Links made before the row list was curated keep working, minus retired rows.
+  assert.deepEqual(parseConfig('top10.movies.asia.kids.yaoi.isekai'), ['kitsu-category-isekai']);
+  assert.deepEqual(parseConfig('top10'), []);
+  assert.deepEqual(normalizeCatalogIds(['kitsu-top10', 'kitsu-category-josei', 'kitsu-upcoming']), ['kitsu-upcoming']);
   for (const bad of ['', 'nope', 'action..isekai', 'Action', 'action/isekai', 'a'.repeat(1001)]) assert.equal(parseConfig(bad), null, bad);
   assert.deepEqual(normalizeCatalogIds(['kitsu-category-isekai', 'kitsu-popular']), ['kitsu-popular', 'kitsu-category-isekai']);
   assert.equal(normalizeCatalogIds(['kitsu-search']), null);
@@ -247,24 +255,48 @@ test('configured install links route catalogs, metadata and the configure page',
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
   const base = `http://127.0.0.1:${server.address().port}`;
-  const configured = await (await fetch(`${base}/c/isekai.top10/manifest.json`)).json();
-  assert.deepEqual(configured.catalogs.map(catalog => catalog.id), ['kitsu-top10', 'kitsu-category-isekai', 'kitsu-search']);
+  const configured = await (await fetch(`${base}/c/isekai.trending/manifest.json`)).json();
+  assert.deepEqual(configured.catalogs.map(catalog => catalog.id), ['kitsu-trending', 'kitsu-category-isekai', 'kitsu-search']);
+  const old = await (await fetch(`${base}/c/top10.isekai.asia/manifest.json`)).json();
+  assert.deepEqual(old.catalogs.map(catalog => catalog.id), ['kitsu-category-isekai', 'kitsu-search'], 'older link still installs');
   assert.equal(configured.behaviorHints.configurationRequired, undefined);
   assert.equal((await fetch(`${base}/c/not-a-genre/manifest.json`)).status, 404);
   await fetch(`${base}/c/isekai/catalog/series/kitsu-category-isekai/skip=100.json`);
   assert.deepEqual(calls.at(-1), { id: 'kitsu-category-isekai', extra: { skip: '100' } });
   const meta = await (await fetch(`${base}/c/isekai/meta/series/kitsu:7.json`)).json();
   assert.equal(meta.meta.videos[0].id, 'kitsu:7:1', 'same IDs for configured installs');
-  const page = await fetch(`${base}/c/isekai.top10/configure`);
+  const page = await fetch(`${base}/c/isekai.trending/configure`);
   assert.equal(page.status, 200);
   assert.match(page.headers.get('content-type'), /text\/html/);
-  assert.equal((await fetch(`${base}/c/isekai.top10/app.js`)).status, 200);
+  assert.equal((await fetch(`${base}/c/isekai.trending/app.js`)).status, 200);
   const options = await (await fetch(`${base}/catalog-options.json`)).json();
-  assert.equal(options.options.length, 45);
+  assert.equal(options.options.length, 37);
   assert.equal((await fetch(`${base}/manifest.json`).then(response => response.json())).behaviorHints.configurationRequired, true);
 });
 
-test('Top 10 Airing is the first ten of Currently Airing', async () => {
+test('Trending This Week uses Kitsu trending and falls back to Top Airing', async () => {
+  const calls = [];
+  let trendingFails = false;
+  const api = { request: async (path, params) => {
+    calls.push(path);
+    if (path === 'trending/anime') {
+      if (trendingFails) throw new Error('down');
+      return { data: [anime(7), anime(3), anime(7)] };
+    }
+    return { data: [anime(1), anime(2)], links: {}, meta: { count: 2 } };
+  } };
+  const trending = await createKitsuService(api).catalog('kitsu-trending', {});
+  assert.deepEqual(trending.metas.map(meta => meta.id), ['kitsu:7', 'kitsu:3'], 'trending order, duplicates removed');
+  assert.deepEqual(await createKitsuService(api).catalog('kitsu-trending', { skip: '100' }), { metas: [] });
+  trendingFails = true;
+  const fallback = await createKitsuService(api).catalog('kitsu-trending', {});
+  assert.deepEqual(fallback.metas.map(meta => meta.id), ['kitsu:1', 'kitsu:2']);
+  const upcoming = [];
+  await createKitsuService({ request: async (path, params) => { upcoming.push(params); return { data: [], links: {}, meta: { count: 0 } }; } }).catalog('kitsu-upcoming', {});
+  assert.equal(upcoming[0]['filter[status]'], 'upcoming');
+});
+
+test('Top 10 Airing (retired, still served for old links) is the first ten of Top Airing', async () => {
   const pages = [];
   const api = { request: async (path, params) => {
     pages.push(params);

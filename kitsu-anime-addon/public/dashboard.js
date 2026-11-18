@@ -10,9 +10,9 @@ const STATUSES = [
 const STATUS_LABEL = Object.fromEntries(STATUSES);
 const FALLBACK_POSTER = '/logo.svg';
 const state = { me: null, config: null, entries: [], filter: 'all', editing: null, recsLoaded: false, discoverLoaded: false, pollTimer: null,
-  browse: { id: 'kitsu-popular', metas: [], shown: 0, skip: 0, more: false, controller: null } };
+  browse: { id: 'kitsu-trending', metas: [], shown: 0, skip: 0, more: false, controller: null } };
 const BROWSE_STEP = 30;
-const BROWSE_LISTS = [['kitsu-popular', 'Most popular'], ['kitsu-top-rated', 'Top rated'], ['kitsu-airing', 'Airing now'], ['kitsu-movies', 'Movies']];
+const BROWSE_LISTS = [['kitsu-trending', 'Trending This Week'], ['kitsu-airing', 'Top Airing'], ['kitsu-upcoming', 'Top Upcoming'], ['kitsu-top-rated', 'Highest Rated'], ['kitsu-popular', 'Most Popular']];
 
 // ---- Helpers ------------------------------------------------------------------
 
@@ -358,8 +358,8 @@ async function fetchCatalog(id, skip = 0, signal) {
 async function loadTop10() {
   $('#top10').replaceChildren(...Array.from({ length: 10 }, () => el('li', { 'aria-hidden': 'true' }, el('div', { class: 'skeleton' }))));
   try {
-    let metas = (await fetchCatalog('kitsu-airing')).slice(0, 10);
-    let label = 'The most popular anime airing now on Kitsu.';
+    let metas = (await fetchCatalog('kitsu-trending')).slice(0, 10);
+    let label = 'What Kitsu members are watching this week.';
     if (!metas.length) { metas = (await fetchCatalog('kitsu-popular')).slice(0, 10); label = 'The most popular anime on Kitsu.'; }
     $('#top10').replaceChildren(...metas.map((meta, index) => el('li', {}, discoverCard(meta, { rank: index + 1 }))));
     $('#top10-status').textContent = metas.length ? label : 'Nothing to show right now. Try again later.';
@@ -373,8 +373,8 @@ async function loadTop10() {
 async function loadBrowseChoices() {
   let genres = [];
   try {
-    const manifest = await (await fetch('/manifest.json')).json();
-    genres = manifest.catalogs.filter(catalog => catalog.id.startsWith('kitsu-category-')).map(catalog => [catalog.id, catalog.name]);
+    const { options } = await (await fetch('/catalog-options.json')).json();
+    genres = options.filter(option => option.group === 'genre').map(option => [option.id, option.name]);
   } catch { /* the fixed lists still work */ }
   const choices = [...BROWSE_LISTS, ...genres];
   $('#browse-chips').replaceChildren(...choices.map(([id, name], index) => el('button', {

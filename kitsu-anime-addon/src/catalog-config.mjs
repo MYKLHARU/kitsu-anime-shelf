@@ -8,26 +8,38 @@ import { CATALOGS } from './kitsu.mjs';
 import { CATEGORIES } from './categories.mjs';
 
 const LISTS = [
-  ['top10', 'kitsu-top10', 'Top 10 Airing'],
-  ['popular', 'kitsu-popular', 'Most popular'],
-  ['top-rated', 'kitsu-top-rated', 'Top rated'],
-  ['airing', 'kitsu-airing', 'Airing now'],
-  ['movies', 'kitsu-movies', 'Movies']
+  ['trending', 'kitsu-trending', 'Trending This Week'],
+  ['airing', 'kitsu-airing', 'Top Airing'],
+  ['upcoming', 'kitsu-upcoming', 'Top Upcoming'],
+  ['top-rated', 'kitsu-top-rated', 'Highest Rated'],
+  ['popular', 'kitsu-popular', 'Most Popular']
 ];
+
+// The genres offered as rows (a curated subset of Kitsu's categories).
+export const GENRE_NAMES = Object.freeze([
+  'Action', 'Adventure', 'Comedy', 'Demon', 'Drama', 'Earth', 'Ecchi', 'Fantasy', 'Fantasy World', 'Harem',
+  'Historical', 'Horror', 'Isekai', 'Magic', 'Martial Arts', 'Mecha', 'Military', 'Music', 'Mystery', 'Present',
+  'Psychological', 'Romance', 'School Life', 'Science Fiction', 'Seinen', 'Shounen', 'Slice of Life', 'Sports',
+  'Supernatural', 'Superpower', 'Thriller', 'Violence'
+]);
 
 export const CATALOG_OPTIONS = Object.freeze([
   ...LISTS.map(([key, id, name]) => Object.freeze({ key, id, name, group: 'list' })),
-  ...Object.entries(CATEGORIES).map(([name, slug]) => Object.freeze({ key: slug, id: `kitsu-category-${slug}`, name, group: 'genre' }))
+  ...GENRE_NAMES.map(name => Object.freeze({ key: CATEGORIES[name], id: `kitsu-category-${CATEGORIES[name]}`, name, group: 'genre' }))
 ]);
 const BY_KEY = new Map(CATALOG_OPTIONS.map(option => [option.key, option]));
 const BY_ID = new Map(CATALOG_OPTIONS.map(option => [option.id, option]));
+// Options offered earlier. Old install links and saved choices that contain
+// them keep working; the retired rows are simply dropped.
+const RETIRED_KEYS = new Set(['top10', 'movies', ...Object.values(CATEGORIES).filter(slug => !BY_KEY.has(slug))]);
+const RETIRED_IDS = new Set(['kitsu-top10', 'kitsu-movies', ...Object.values(CATEGORIES).map(slug => `kitsu-category-${slug}`).filter(id => !BY_ID.has(id))]);
 export const SEARCH_CATALOG_ID = 'kitsu-search';
 
 // Returns catalog IDs in canonical order, or null for an invalid configuration.
 export function parseConfig(text) {
   if (typeof text !== 'string' || text.length > 1000 || !/^[a-z0-9-]+(?:\.[a-z0-9-]+)*$/.test(text)) return null;
   const keys = new Set(text.split('.'));
-  if ([...keys].some(key => !BY_KEY.has(key))) return null;
+  if ([...keys].some(key => !BY_KEY.has(key) && !RETIRED_KEYS.has(key))) return null;
   return CATALOG_OPTIONS.filter(option => keys.has(option.key)).map(option => option.id);
 }
 
@@ -37,8 +49,9 @@ export function encodeConfig(ids) {
 }
 
 // Normalises a list of catalog IDs (from the dashboard API or the database).
+// Retired options are dropped; anything else unknown is rejected.
 export function normalizeCatalogIds(ids) {
-  if (!Array.isArray(ids) || ids.length > CATALOG_OPTIONS.length || ids.some(id => typeof id !== 'string' || !BY_ID.has(id))) return null;
+  if (!Array.isArray(ids) || ids.length > 60 || ids.some(id => typeof id !== 'string' || (!BY_ID.has(id) && !RETIRED_IDS.has(id)))) return null;
   const wanted = new Set(ids);
   return CATALOG_OPTIONS.filter(option => wanted.has(option.id)).map(option => option.id);
 }
