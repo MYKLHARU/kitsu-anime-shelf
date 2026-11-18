@@ -166,16 +166,16 @@ function episodeVideo(animeId, number, attributes = {}) {
   };
 }
 
-export function createKitsuService(api = createApiClient(), { artwork, seasonGroups, now = Date.now } = {}) {
+export function createKitsuService(api = createApiClient(), { artwork, seasonGroups, now = Date.now, catalogStore } = {}) {
   function preview(item, included) {
     const meta = toMeta(item, included);
     artwork?.remember(item, meta);
     return artwork ? artwork.decorate(meta) : meta;
   }
   const groupedCatalog = seasonGroups ? createGroupedCatalog({ api, preview, now }) : undefined;
-  const catalogCache = createCatalogCache({ now });
+  const catalogCache = createCatalogCache({ now, store: catalogStore });
 
-  async function catalog(id, extra = {}) {
+  async function catalog(id, extra = {}, { background = false } = {}) {
     const definition = CATALOGS[id];
     if (!definition) throw new ApiError('Catalog not found.', 404);
     if (definition.source) {
@@ -193,7 +193,7 @@ export function createKitsuService(api = createApiClient(), { artwork, seasonGro
         if (!items.length) return catalog(definition.fallback, {});
         const seen = new Set();
         return { metas: items.map(item => preview(item, result.included)).filter(meta => !seen.has(meta.id) && seen.add(meta.id)) };
-      });
+      }, { background });
     }
     const skip = extra.skip === undefined ? 0 : Number(extra.skip);
     if (!Number.isSafeInteger(skip) || skip < 0 || skip > 1000000) throw new ApiError('Invalid catalog offset.', 400);
@@ -241,7 +241,7 @@ export function createKitsuService(api = createApiClient(), { artwork, seasonGro
     // cached first page and the browse cursor for later pages are replaced
     // together (see createGroupedCatalog), so skip keeps one meaning.
     if (query || skip !== 0) return load();
-    return catalogCache.read(id, load);
+    return catalogCache.read(id, load, { background });
   }
 
   async function singleMetadata(id, { enrichArtwork = true } = {}) {
@@ -304,5 +304,17 @@ export function createKitsuService(api = createApiClient(), { artwork, seasonGro
     return group ? groupedMetadata(group, singleMetadata) : singleMetadata(id);
   }
 
-  return { catalog, metadata };
+  // Load first pages one at a time at background priority, so rows are ready
+  // (or restored from the persistent store) before anyone opens Stremio.
+  async function warm(ids, { shouldStop = () => false } = {}) {
+    let loaded = 0;
+    for (const id of ids) {
+      if (shouldStop()) break;
+      try { await catalog(id, {}, { background: true }); loaded += 1; }
+      catch { /* Kitsu outage: the row loads on demand later. */ }
+    }
+    return loaded;
+  }
+
+  return { catalog, metadata, warm };
 }

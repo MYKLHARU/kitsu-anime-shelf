@@ -55,6 +55,8 @@ These are the **32 genres**, in this order:
 
 Action, Adventure, Comedy, Demon, Drama, Earth, Ecchi, Fantasy, Fantasy World, Harem, Historical, Horror, Isekai, Magic, Martial Arts, Mecha, Military, Music, Mystery, Present, Psychological, Romance, School Life, Science Fiction, Seinen, Shounen, Slice of Life, Sports, Supernatural, Superpower, Thriller, Violence.
 
+**Speed:** each row's first page is cached for 15 minutes and served instantly for up to 24 hours while it refreshes in the background. With accounts enabled the cache is also saved in PostgreSQL, so rows stay fast after restarts and deploys. Shortly after start-up, all offered rows are loaded one at a time in the background (`WARM_CATALOGS=false` disables this).
+
 Rows offered in earlier versions (Top 10 Airing, Anime Movies, Asia, Children, Japan, Josei, Shoujo, Shoujo Ai, Shounen Ai, Yaoi) are no longer offered. Install links and saved choices that include them keep working without those rows.
 
 **Category mappings:** Superpower uses Kitsu's `super-power` category. The other labels map directly to their Kitsu category slugs. These mappings were checked against the live category API on 10 November 2026. Public API visibility follows Kitsu's unauthenticated-content rules, so some categories may have limited or empty results.

@@ -382,6 +382,27 @@ test('Kitsu Anime Shelf 2.0 end to end', { skip: dbSkip, timeout: 120000 }, asyn
     assert.equal(limited, 300, 'per-address limit applies before any token lookup');
   });
 
+  await t.test('catalog rows are saved in PostgreSQL and served after a restart', async () => {
+    await alice.request('/c/isekai/catalog/series/kitsu-category-isekai.json');
+    const stored = await until(async () => (await db.pool.query(`SELECT value FROM shelf_catalog_cache WHERE key = 'kitsu-category-isekai'`)).rows[0]);
+    assert.ok(stored.value.metas.some(meta => meta.id === 'kitsu:2'));
+    // A second server on the same database, whose Kitsu is unreachable.
+    const port = await freePort();
+    const v2 = await prepareV2({ env: { ACCOUNTS_ENABLED: 'true', PUBLIC_URL: `http://127.0.0.1:${port}`, DATABASE_URL: 'postgres://unused', TOKEN_ENCRYPTION_KEY: KEY },
+      version: VERSION, db: db.pool, logger: quiet });
+    const offline = { request: async () => { throw Object.assign(new Error('Kitsu is down'), { status: 502 }); } };
+    const restarted = createAddonServer({ v2, api: offline, loadMappings: async () => [], logger: quiet, token: '', apiKey: '', warmCatalogs: false });
+    await new Promise(resolve => restarted.listen(port, '127.0.0.1', resolve));
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/c/isekai/catalog/series/kitsu-category-isekai.json`);
+      assert.equal(response.status, 200);
+      assert.ok((await response.json()).metas.some(meta => meta.id === 'kitsu:2'), 'served from the saved row');
+    } finally {
+      restarted.closeAllConnections();
+      await new Promise(resolve => restarted.close(resolve));
+    }
+  });
+
   await t.test('logout clears the session', async () => {
     assert.equal((await bob.request('/api/v2/auth/logout', { method: 'POST' })).status, 200);
     assert.equal((await bob.request('/api/v2/me')).status, 401);
@@ -411,7 +432,7 @@ test('2.0 stays disabled unless fully configured and migrated', { skip: dbSkip }
   try {
     const env = { ACCOUNTS_ENABLED: 'true', PUBLIC_URL: 'https://shelf.example.org', DATABASE_URL: 'postgres://unused', TOKEN_ENCRYPTION_KEY: KEY };
     assert.equal(await prepareV2({ env, logger, db: unmigrated.pool }), undefined);
-    assert.match(errors.at(-1), /Pending: 001_personal_library\.sql, 002_accounts_sync_catalogs\.sql, 003_stremio_catalog_choices\.sql/);
+    assert.match(errors.at(-1), /Pending: 001_personal_library\.sql, 002_accounts_sync_catalogs\.sql, 003_stremio_catalog_choices\.sql, 004_catalog_cache\.sql/);
     const factory = await prepareV2({ env: { ...env, RUN_MIGRATIONS_ON_START: 'true' }, logger, db: unmigrated.pool });
     assert.equal(typeof factory, 'function');
   } finally {

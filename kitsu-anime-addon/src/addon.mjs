@@ -72,9 +72,17 @@ const parseExtra = (raw, url) => parseCatalogExtra(raw, url, ApiError);
 // personal catalogs. Without it the server is the unchanged public add-on.
 export function createAddonServer({ service, artwork, logger = console,
   publicUrl = process.env.PUBLIC_URL || '', token = process.env.TMDB_READ_ACCESS_TOKEN || '', apiKey = process.env.TMDB_API_KEY || '',
-  groupSeasons = process.env.GROUP_ANIME_SEASONS !== 'false', v2, api, loadMappings, seasonGroups } = {}) {
+  groupSeasons = process.env.GROUP_ANIME_SEASONS !== 'false', v2, api, loadMappings, seasonGroups,
+  warmCatalogs = process.env.WARM_CATALOGS !== 'false', warmDelayMs = 3000 } = {}) {
   const groupingEnabled = !service && groupSeasons;
   const artworkCapability = artwork?.enabled;
+  const ownService = !service;
+  // The 2.0 extension (created below) may supply a persistent row store.
+  const storeRef = {};
+  const catalogStore = {
+    get: key => storeRef.current?.get(key),
+    set: (key, value, saved) => storeRef.current?.set(key, value, saved)
+  };
   if (!service) {
     api ??= createApiClient();
     loadMappings ??= createAnimeMappingLoader();
@@ -86,9 +94,10 @@ export function createAddonServer({ service, artwork, logger = console,
         return result.data;
       }
     });
-    service = createKitsuService(api, { artwork, seasonGroups });
+    service = createKitsuService(api, { artwork, seasonGroups, catalogStore });
   }
   const extension = v2?.({ api, service, artwork, loadMappings, seasonGroups });
+  storeRef.current = extension?.catalogStore;
   const server = http.createServer(async (request, response) => {
     if (extension) {
       try {
@@ -186,5 +195,18 @@ export function createAddonServer({ service, artwork, logger = console,
     }
   });
   if (extension?.close) server.on('close', () => extension.close().catch(() => {}));
+  // Warm every offered row shortly after start-up (one at a time, background
+  // priority), restoring saved rows from the database when available.
+  if (ownService && warmCatalogs && typeof service.warm === 'function') {
+    let closed = false;
+    server.on('close', () => { closed = true; });
+    server.once('listening', () => {
+      const timer = setTimeout(() => {
+        service.warm(CATALOG_OPTIONS.map(option => option.id), { shouldStop: () => closed })
+          .catch(error => logger.error(`Catalog warm-up failed: ${error.message}`));
+      }, warmDelayMs);
+      timer.unref?.();
+    });
+  }
   return server;
 }
