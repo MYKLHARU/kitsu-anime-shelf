@@ -41,21 +41,23 @@ The local address works on the computer running this server. It does not provide
 
 ## Included catalogs
 
-**Since 2.0 you choose your rows.** A plain install of `/manifest.json` shows no rows and Stremio offers **Configure**. On the setup page (or Configure), pick any of the lists and genres below; your choices are encoded in the install URL, for example `/c/top10.popular.isekai/manifest.json`. Installing again with new choices replaces the previous install (the add-on ID stays the same). Search is always available. Account holders can instead choose rows in the dashboard for their personal install link.
+**Since 2.0 you choose your rows.** A plain install of `/manifest.json` shows no rows and Stremio offers **Configure**. On the setup page (or Configure), pick any of the lists and genres below; your choices are encoded in the install URL, for example `/c/trending.popular.isekai/manifest.json`. Installing again with new choices replaces the previous install (the add-on ID stays the same). Search is always available. Account holders can instead choose rows in the dashboard for their personal install link.
 
-Available rows: **Top 10 Airing** (the first ten of Currently Airing), the four general lists below, and the 40 categories. Choices are shown in this order:
+Lists:
 
-- Popular: ranked by Kitsu popularity.
-- Top Rated: ranked by Kitsu's average rating; this is not an IMDb rating.
-- Currently Airing: titles Kitsu marks as `current`, ranked by popularity.
-- Anime Movies: Kitsu's movie subtype, ranked by popularity.
-- Search: Kitsu title search.
+- Trending This Week: Kitsu's weekly trending list (falls back to Top Airing if Kitsu returns none).
+- Top Airing: titles Kitsu marks as `current`, ranked by popularity.
+- Top Upcoming: titles Kitsu marks as `upcoming`, ranked by popularity.
+- Highest Rated: ranked by Kitsu's average rating; this is not an IMDb rating.
+- Most Popular: ranked by Kitsu popularity.
 
-These are the **40 main category catalogs**, in the requested order:
+These are the **32 genres**, in this order:
 
-Action, Adventure, Asia, Children, Comedy, Demon, Drama, Earth, Ecchi, Fantasy, Fantasy World, Harem, Historical, Horror, Isekai, Japan, Josei, Magic, Martial Arts, Mecha, Military, Music, Mystery, Present, Psychological, Romance, School Life, Science Fiction, Seinen, Shoujo, Shoujo Ai, Shounen, Shounen Ai, Slice of Life, Sports, Supernatural, Superpower, Thriller, Violence, Yaoi.
+Action, Adventure, Comedy, Demon, Drama, Earth, Ecchi, Fantasy, Fantasy World, Harem, Historical, Horror, Isekai, Magic, Martial Arts, Mecha, Military, Music, Mystery, Present, Psychological, Romance, School Life, Science Fiction, Seinen, Shounen, Slice of Life, Sports, Supernatural, Superpower, Thriller, Violence.
 
-**Category mappings:** Children uses Kitsu's `kids` category; Superpower uses `super-power`. The other labels map directly to their Kitsu category slugs. These mappings were checked against the live category API on 10 November 2026. Public API visibility follows Kitsu's unauthenticated-content rules, so some categories may have limited or empty results.
+Rows offered in earlier versions (Top 10 Airing, Anime Movies, Asia, Children, Japan, Josei, Shoujo, Shoujo Ai, Shounen Ai, Yaoi) are no longer offered. Install links and saved choices that include them keep working without those rows.
+
+**Category mappings:** Superpower uses Kitsu's `super-power` category. The other labels map directly to their Kitsu category slugs. These mappings were checked against the live category API on 10 November 2026. Public API visibility follows Kitsu's unauthenticated-content rules, so some categories may have limited or empty results.
 
 ## Episodes and playback
 

@@ -85,10 +85,10 @@ test('Kitsu Anime Shelf 2.0 end to end', { skip: dbSkip, timeout: 120000 }, asyn
     assert.deepEqual(manifest.body.idPrefixes, ['kitsu:']);
     assert.equal(manifest.body.catalogs.length, publicManifest.catalogs.length);
     assert.equal(manifest.body.behaviorHints.configurationRequired, true, 'plain install shows no rows');
-    const configured = await alice.request('/c/top10.isekai/manifest.json');
-    assert.deepEqual(configured.body.catalogs.map(catalog => catalog.id), ['kitsu-top10', 'kitsu-category-isekai', 'kitsu-search']);
-    const top10 = await alice.request('/c/top10.isekai/catalog/series/kitsu-top10.json');
-    assert.ok(top10.body.metas.length > 0 && top10.body.metas.length <= 10);
+    const configured = await alice.request('/c/trending.isekai/manifest.json');
+    assert.deepEqual(configured.body.catalogs.map(catalog => catalog.id), ['kitsu-trending', 'kitsu-category-isekai', 'kitsu-search']);
+    const trending = await alice.request('/c/trending.isekai/catalog/series/kitsu-trending.json');
+    assert.deepEqual(trending.body.metas.slice(0, 2).map(meta => meta.id), ['kitsu:5', 'kitsu:2'], 'Kitsu trending order');
     assert.equal(manifest.headers.get('access-control-allow-origin'), '*');
     const health = await alice.request('/health');
     assert.equal(health.body.accounts, true);
@@ -223,10 +223,10 @@ test('Kitsu Anime Shelf 2.0 end to end', { skip: dbSkip, timeout: 120000 }, asyn
     assert.equal((await alice.request('/api/v2/stremio/catalogs')).body.catalogs.length, 0);
     assert.equal((await alice.request('/api/v2/stremio/catalogs', { method: 'PUT', body: { catalogs: ['kitsu-category-nope'] } })).status, 400);
     assert.equal((await alice.request('/api/v2/stremio/catalogs', { method: 'PUT', body: { catalogs: ['kitsu-popular'] }, headers: { Origin: 'https://evil.example' } })).status, 403);
-    const saved = await alice.request('/api/v2/stremio/catalogs', { method: 'PUT', body: { catalogs: ['kitsu-category-isekai', 'kitsu-top10'] } });
-    assert.deepEqual(saved.body.catalogs, ['kitsu-top10', 'kitsu-category-isekai'], 'stored in canonical order');
+    const saved = await alice.request('/api/v2/stremio/catalogs', { method: 'PUT', body: { catalogs: ['kitsu-category-isekai', 'kitsu-trending', 'kitsu-top10'] } });
+    assert.deepEqual(saved.body.catalogs, ['kitsu-trending', 'kitsu-category-isekai'], 'canonical order; retired rows dropped');
     const chosenManifest = await stremio.request(manifestUrl.pathname);
-    assert.deepEqual(chosenManifest.body.catalogs.slice(5).map(catalog => catalog.id), ['kitsu-top10', 'kitsu-category-isekai', 'kitsu-search']);
+    assert.deepEqual(chosenManifest.body.catalogs.slice(5).map(catalog => catalog.id), ['kitsu-trending', 'kitsu-category-isekai', 'kitsu-search']);
     const isekaiRow = await stremio.request(`${prefix}/catalog/series/kitsu-category-isekai.json`);
     assert.deepEqual(isekaiRow.body.metas.map(meta => meta.id).sort(), ['kitsu:2', 'kitsu:5']);
     assert.equal((await stremio.request(`${prefix}/catalog/series/kitsu-category-mecha.json`)).status, 404, 'unchosen rows are not served');
@@ -344,7 +344,7 @@ test('Kitsu Anime Shelf 2.0 end to end', { skip: dbSkip, timeout: 120000 }, asyn
     assert.equal(exported.status, 200);
     assert.match(exported.headers.get('content-disposition'), /attachment/);
     assert.equal(exported.body.account.email, 'alice@example.com');
-    assert.deepEqual(exported.body.account.stremio_catalogs, ['kitsu-top10', 'kitsu-category-isekai']);
+    assert.deepEqual(exported.body.account.stremio_catalogs, ['kitsu-trending', 'kitsu-category-isekai']);
     assert.ok(exported.body.library.length >= 4);
     assert.equal(JSON.stringify(exported.body).includes('password_hash'), false);
     assert.equal(JSON.stringify(exported.body).includes('access_token'), false);
